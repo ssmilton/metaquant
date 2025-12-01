@@ -66,15 +66,27 @@ class HostModelRunner(BaseModelRunner):
 
         logger.info("Creating venv for %s at %s", self.manifest.model_id, self.env_dir)
         self.env_dir.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([sys.executable, "-m", "venv", str(self.env_dir)], check=True)
+        subprocess.run(
+            ["uv", "venv", str(self.env_dir), "--python", sys.executable], check=True
+        )
 
         requirements_file = self.manifest.dependencies.requirements_file if self.manifest.dependencies else None
         if requirements_file:
             req_path = (self.working_dir / requirements_file).resolve()
             if req_path.exists():
-                logger.info("Installing requirements for %s from %s", self.manifest.model_id, req_path)
+                logger.info(
+                    "Installing requirements for %s from %s", self.manifest.model_id, req_path
+                )
                 subprocess.run(
-                    [str(python_path), "-m", "pip", "install", "-r", str(req_path)],
+                    [
+                        "uv",
+                        "pip",
+                        "install",
+                        "--python",
+                        str(python_path),
+                        "-r",
+                        str(req_path),
+                    ],
                     check=True,
                 )
             else:

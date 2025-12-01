@@ -84,6 +84,6 @@ Models are external executables. Manifest (`model.json`) fields include `model_i
 YAML files in `experiments/` can define universes, date ranges, models, and metrics. They can be referenced by orchestration tooling or passed directly to CLI commands.
 
 ## Contributing
-- Install dependencies with `pip install -e .`.
-- Run unit tests with `pytest` (stubs provided for expansion).
+- Install dependencies with [uv](https://docs.astral.sh/uv/): `uv venv .venv` then `source .venv/bin/activate` and `uv pip install -e .`.
+- Run unit tests with `uv run pytest` (stubs provided for expansion).
 - Extend ETL modules to connect to your data sources and populate DuckDB before running backtests.

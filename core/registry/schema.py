@@ -19,7 +19,8 @@ class HostDependencies(BaseModel):
         default=None, description="Python version constraint for host runtime"
     )
     requirements_file: Optional[str] = Field(
-        default=None, description="Relative path to requirements.txt for pip install"
+        default=None,
+        description="Relative path to requirements.txt for uv-managed installation",
     )
 
 
