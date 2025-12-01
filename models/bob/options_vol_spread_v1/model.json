@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "description": "Example non-Python model placeholder",
   "author": "bob",
+  "runtime": "host",
+  "platform": "linux/amd64",
   "entrypoint": "go run main.go",
+  "dependencies": {
+    "go": ">=1.20"
+  },
   "input_types": ["options"],
   "output_type": "signals",
   "tags": ["example", "go"]

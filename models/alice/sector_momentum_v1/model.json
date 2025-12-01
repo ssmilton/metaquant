@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "Toy sector momentum model that goes long on first security",
   "author": "alice",
+  "runtime": "host",
+  "platform": "any",
   "entrypoint": "python run_model.py",
+  "dependencies": {
+    "python": ">=3.11"
+  },
   "input_types": ["prices", "market_features"],
   "output_type": "signals",
   "tags": ["example", "python"]
