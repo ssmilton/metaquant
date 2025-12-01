@@ -12,3 +12,18 @@ backtest_defaults:
   initial_capital: 1000000
   transaction_cost_bps: 5
   slippage_bps: 1
+
+nodes:
+  - name: "local-linux-dev"
+    platform: "linux/amd64"
+    runtimes: ["host", "docker"]
+    tags: ["dev", "default"]
+
+docker:
+  host: null
+  default_timeout_secs: 300
+  default_memory: null
+  default_cpus: null
+  default_mounts: []
+
+env_root: ".envs"

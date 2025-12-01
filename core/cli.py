@@ -40,16 +40,37 @@ def backtest(
     end_date: str = typer.Option(...),
     security_ids: str = typer.Option(..., help="Comma separated security ids"),
     params: str = typer.Option("{}", help="JSON string of model parameters"),
+    node: Optional[str] = typer.Option(
+        None, help="Explicit execution node name (must exist in config nodes)"
+    ),
+    node_tags: Optional[str] = typer.Option(
+        None, help="Comma separated preferred node tags"
+    ),
     config_path: str = "config/base.yaml",
 ) -> None:
     cfg = load_app_config(config_path)
     registry = ModelRegistry()
     manifest = registry.get_model(model_id)
     adapter = DuckDBAdapter(cfg.storage.duckdb_path)
-    engine = BacktestEngine(adapter)
+    engine = BacktestEngine(
+        adapter, nodes=cfg.nodes, docker_config=cfg.docker, env_root=cfg.env_root
+    )
     param_dict = json.loads(params)
     ids = [int(x) for x in security_ids.split(",")]
-    result = engine.run(manifest, manifest.path.parent, ids, start_date, end_date, param_dict)
+    tags = [tag.strip() for tag in node_tags.split(",") if tag.strip()] if node_tags else None
+    result = engine.run(
+        manifest,
+        manifest.path.parent,
+        ids,
+        start_date,
+        end_date,
+        param_dict,
+        initial_capital=cfg.backtest_defaults.initial_capital,
+        transaction_cost_bps=cfg.backtest_defaults.transaction_cost_bps,
+        slippage_bps=cfg.backtest_defaults.slippage_bps,
+        node_name=node,
+        node_tags=tags,
+    )
     summary = reports.summarize_run(result.run_id, result.equity_curve)
     print("Run ID:", result.run_id)
     print(json.dumps(summary, indent=2))

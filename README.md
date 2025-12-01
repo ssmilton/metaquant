@@ -7,6 +7,7 @@ MetaQuant is a modular, language-agnostic quantitative research and stock screen
 - **DuckDB-first storage**: backtests query only DuckDB tables. ETL helpers normalize data from SQL Server, Oracle, Postgres, or CSV/Parquet into a shared schema.
 - **Language-agnostic models**: each model ships with a `model.json` manifest describing the entrypoint command. Models read JSON from stdin and emit JSON to stdout, so they can be written in any language.
 - **Experiments via config**: YAML files describe universes, time windows, models to run, and evaluation metrics.
+- **Runtime-aware execution**: manifests declare runtime (host or docker) and platform (linux/amd64, windows/amd64, or any) and are scheduled onto compatible nodes.
 
 ## Repository Layout
 ```
@@ -62,6 +63,11 @@ Models are external executables. Manifest (`model.json`) fields include `model_i
   ]
 }
 ```
+
+### Runtime, platform, and nodes
+- Every manifest declares a `runtime` (`host` or `docker`) and a `platform` (`linux/amd64`, `windows/amd64`, or `any`).
+- Docker models add `docker_image` and `docker_entrypoint`; host models keep `entrypoint` and optional `dependencies` (e.g., `requirements_file`).
+- Execution nodes are listed in `config/base.yaml` with their supported runtimes and platform. The backtest CLI can pick a node automatically or you can pass `--node` or `--node-tags` to direct scheduling.
 
 ## CLI Usage
 - `quantfw list-models` — discover manifests under `models/`.

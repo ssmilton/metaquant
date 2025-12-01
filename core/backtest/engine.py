@@ -4,14 +4,16 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
 
 from core.data_access.duckdb_adapter import DuckDBAdapter
 from core.models.base_contract import ModelInput, ModelOutput, SecurityDefinition, TimeRange
-from core.models.runner import ModelRunner
-from core.registry.schema import ModelManifest
+from core.models.runner import ModelRunnerFactory
+from core.registry.schema import ExecutionNode, ModelManifest
+from core.runtime.nodes import select_node
+from core.config import DockerRuntimeConfig
 from .portfolio import Portfolio
 
 logger = logging.getLogger(__name__)
@@ -27,8 +29,25 @@ class BacktestResult:
 
 
 class BacktestEngine:
-    def __init__(self, adapter: DuckDBAdapter) -> None:
+    def __init__(
+        self,
+        adapter: DuckDBAdapter,
+        nodes: Optional[List[ExecutionNode]] = None,
+        docker_config: Optional[DockerRuntimeConfig] = None,
+        env_root: str = ".envs",
+    ) -> None:
         self.adapter = adapter
+        self.nodes = nodes or [
+            ExecutionNode(
+                name="local-linux-dev",
+                platform="linux/amd64",
+                runtimes=["host", "docker"],
+                tags=["dev", "default"],
+            )
+        ]
+        self.runner_factory = ModelRunnerFactory(
+            docker_config=docker_config, env_root=env_root
+        )
 
     def build_payload(
         self,
@@ -61,6 +80,24 @@ class BacktestEngine:
         )
         return model_input.model_dump()
 
+    def _select_node(
+        self,
+        manifest: ModelManifest,
+        node_name: Optional[str] = None,
+        node_tags: Optional[List[str]] = None,
+    ) -> ExecutionNode:
+        if node_name:
+            for node in self.nodes:
+                if node.name == node_name:
+                    if not node.supports(manifest):
+                        raise ValueError(
+                            f"Node {node_name} does not support runtime {manifest.runtime} and platform {manifest.platform}"
+                        )
+                    return node
+            raise ValueError(f"Requested node {node_name} not found")
+
+        return select_node(manifest, self.nodes, preferred_tags=node_tags)
+
     def run(
         self,
         manifest: ModelManifest,
@@ -72,12 +109,15 @@ class BacktestEngine:
         initial_capital: float = 100_000,
         transaction_cost_bps: float = 5,
         slippage_bps: float = 1,
+        node_name: Optional[str] = None,
+        node_tags: Optional[List[str]] = None,
     ) -> BacktestResult:
         run_id = str(uuid.uuid4())
         prices = self.adapter.fetch_daily_prices(security_ids, start_date, end_date)
         payload = self.build_payload(manifest, run_id, security_ids, prices, start_date, end_date, params)
 
-        runner = ModelRunner(manifest, model_dir)
+        node = self._select_node(manifest, node_name=node_name, node_tags=node_tags)
+        runner = self.runner_factory.create_runner(manifest, model_dir, node)
         output = runner.run(payload)
         validated = ModelOutput(**output)
         signals_df = pd.DataFrame([s.model_dump() for s in validated.signals])
