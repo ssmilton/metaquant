@@ -1,0 +1,24 @@
+experiment_id: "daily_equities_example"
+universe:
+  type: "equity"
+  security_ids: [1, 2, 3]
+data:
+  source: "duckdb"
+  start_date: "2020-01-01"
+  end_date: "2020-12-31"
+backtest:
+  frequency: "1D"
+  initial_capital: 100000
+  transaction_cost_bps: 5
+  slippage_model: "fixed_bps"
+models:
+  - model_id: "sector_momentum_v1"
+    params:
+      lookback_days: 30
+      top_n_sectors: 3
+evaluation:
+  metrics:
+    - sharpe
+    - max_drawdown
+    - sortino
+  compare_vs_benchmark: "SPY"

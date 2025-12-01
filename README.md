@@ -1,2 +1,83 @@
-# metaquant
-modular model framework intended for market analysis
+# MetaQuant
+
+MetaQuant is a modular, language-agnostic quantitative research and stock screening framework. It centralizes market data in DuckDB, executes external models via a JSON process contract, and provides a minimal backtesting and evaluation toolkit to compare ideas across contributors.
+
+## Architecture Overview
+- **Core (Python 3.11+)**: configuration, DuckDB data access, model registry, subprocess model runner, backtest engine, portfolio accounting, and evaluation utilities.
+- **DuckDB-first storage**: backtests query only DuckDB tables. ETL helpers normalize data from SQL Server, Oracle, Postgres, or CSV/Parquet into a shared schema.
+- **Language-agnostic models**: each model ships with a `model.json` manifest describing the entrypoint command. Models read JSON from stdin and emit JSON to stdout, so they can be written in any language.
+- **Experiments via config**: YAML files describe universes, time windows, models to run, and evaluation metrics.
+
+## Repository Layout
+```
+pyproject.toml
+config/                # base + logging config
+core/
+  config.py            # app config loader
+  data_access/         # DuckDB adapter + ETL stubs
+  registry/            # manifest schema + discovery
+  models/              # JSON contracts + runner
+  backtest/            # engine + portfolio logic
+  evaluation/          # metrics and reporting
+  cli.py               # Typer-based CLI
+models/
+  alice/sector_momentum_v1/    # example Python model
+  bob/options_vol_spread_v1/   # example Go placeholder
+scripts/              # schema init + ingestion helpers
+experiments/          # sample experiment config
+```
+
+## DuckDB Schema
+Run `quantfw init-db` (or execute `scripts/init_duckdb_schema.py`) to create tables:
+- `securities`: master instrument info (equities and options)
+- `daily_prices`: OHLCV by security/date
+- `options_quotes`: greeks/IV per option/date
+- `fundamentals`: metric values per report date
+- `market_features`: market/ regime descriptors
+- `model_runs`, `model_signals`, `trades`, `model_metrics`: provenance, signals, trades, and performance
+
+## Model Contract
+Models are external executables. Manifest (`model.json`) fields include `model_id`, `version`, `entrypoint`, `input_types`, and `output_type`. The runner launches `entrypoint` in the model directory, writes JSON payload to stdin, and expects JSON output:
+
+**Input skeleton**
+```json
+{
+  "mode": "backtest",
+  "model_id": "sector_momentum_v1",
+  "run_id": "<uuid>",
+  "universe": [{"security_id": 101, "ticker": "AAPL"}],
+  "data": {"prices": [...]},
+  "parameters": {"lookback_days": 30},
+  "time_range": {"start": "2020-01-01", "end": "2020-12-31"}
+}
+```
+
+**Output skeleton**
+```json
+{
+  "model_id": "sector_momentum_v1",
+  "run_id": "<uuid>",
+  "signals": [
+    {"timestamp": "2020-01-02", "security_id": 101, "signal_type": "long", "strength": 1.0, "confidence": 0.8, "meta": {}}
+  ]
+}
+```
+
+## CLI Usage
+- `quantfw list-models` — discover manifests under `models/`.
+- `quantfw init-db --config config/base.yaml` — create DuckDB schema at the configured path.
+- `quantfw backtest --model-id sector_momentum_v1 --security-ids 1,2 --start-date 2020-01-01 --end-date 2020-12-31 --params '{"lookback_days":30}'` — run a simple backtest.
+
+## Adding a New Model
+1. Create a directory under `models/<author>/<model_name>/`.
+2. Add `model.json` with metadata and the `entrypoint` command.
+3. Implement the executable to read the JSON input from stdin and write JSON output to stdout.
+4. The manifest is discovered automatically; no core code changes are required.
+
+## Experiments
+YAML files in `experiments/` can define universes, date ranges, models, and metrics. They can be referenced by orchestration tooling or passed directly to CLI commands.
+
+## Contributing
+- Install dependencies with `pip install -e .`.
+- Run unit tests with `pytest` (stubs provided for expansion).
+- Extend ETL modules to connect to your data sources and populate DuckDB before running backtests.

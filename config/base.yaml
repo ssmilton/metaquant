@@ -1,0 +1,14 @@
+# Base configuration for MetaQuant framework
+# Values can be overridden in experiment configs
+
+storage:
+  duckdb_path: data/metaquant.duckdb
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+backtest_defaults:
+  initial_capital: 1000000
+  transaction_cost_bps: 5
+  slippage_bps: 1
