@@ -1,0 +1,10 @@
+{
+  "model_id": "options_vol_spread_v1",
+  "version": "0.1.0",
+  "description": "Example non-Python model placeholder",
+  "author": "bob",
+  "entrypoint": "go run main.go",
+  "input_types": ["options"],
+  "output_type": "signals",
+  "tags": ["example", "go"]
+}
