@@ -114,6 +114,29 @@ class BacktestEngine:
     ) -> BacktestResult:
         run_id = str(uuid.uuid4())
         prices = self.adapter.fetch_daily_prices(security_ids, start_date, end_date)
+
+        if prices.empty:
+            # Get available date ranges to provide helpful error message
+            available_ranges = self.adapter.connection.execute("""
+                SELECT security_id, MIN(date) as min_date, MAX(date) as max_date
+                FROM daily_prices
+                WHERE security_id IN (SELECT UNNEST(?))
+                GROUP BY security_id
+            """, [list(security_ids)]).fetchall()
+
+            error_msg = (
+                f"No price data found for security_ids={list(security_ids)} "
+                f"in date range {start_date} to {end_date}.\n"
+            )
+            if available_ranges:
+                error_msg += "Available data ranges for requested securities:\n"
+                for sid, min_date, max_date in available_ranges:
+                    error_msg += f"  - security_id={sid}: {min_date} to {max_date}\n"
+            else:
+                error_msg += "No price data exists for these securities. Run the data ingestion script first."
+
+            raise ValueError(error_msg)
+
         payload = self.build_payload(manifest, run_id, security_ids, prices, start_date, end_date, params)
 
         node = self._select_node(manifest, node_name=node_name, node_tags=node_tags)
@@ -125,17 +148,18 @@ class BacktestEngine:
         portfolio = Portfolio(initial_capital, transaction_cost_bps, slippage_bps)
         trades: List[Dict] = []
         # naive policy: buy 1 unit on long, sell all on short
-        for _, signal in signals_df.sort_values("timestamp").iterrows():
-            sid = int(signal["security_id"])
-            ts = signal["timestamp"]
-            price_row = prices[(prices["security_id"] == sid) & (prices["date"] == ts)]
-            if price_row.empty:
-                continue
-            px = float(price_row.iloc[0]["close"])
-            if signal["signal_type"] == "long":
-                portfolio.buy(ts, sid, px, quantity=1)
-            elif signal["signal_type"] == "short":
-                portfolio.sell(ts, sid, px, quantity=1)
+        if not signals_df.empty:
+            for _, signal in signals_df.sort_values("timestamp").iterrows():
+                sid = int(signal["security_id"])
+                ts = signal["timestamp"]
+                price_row = prices[(prices["security_id"] == sid) & (prices["date"] == ts)]
+                if price_row.empty:
+                    continue
+                px = float(price_row.iloc[0]["close"])
+                if signal["signal_type"] == "long":
+                    portfolio.buy(ts, sid, px, quantity=1)
+                elif signal["signal_type"] == "short":
+                    portfolio.sell(ts, sid, px, quantity=1)
         for trade in portfolio.trades:
             trades.append(trade.__dict__)
         trades_df = pd.DataFrame(trades)
