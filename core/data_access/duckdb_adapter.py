@@ -45,28 +45,28 @@ class DuckDBAdapter:
     def insert_model_run(self, row: dict) -> None:
         df = pd.DataFrame([row])
         logger.debug("Inserting model run: %s", row)
-        self.connection.execute("INSERT INTO model_runs SELECT * FROM df", {"df": df})
+        self.connection.execute("INSERT INTO model_runs SELECT * FROM df")
 
     def insert_signals(self, df: pd.DataFrame) -> None:
         if df.empty:
             logger.warning("No signals to insert.")
             return
         logger.debug("Inserting %d signals", len(df))
-        self.connection.execute("INSERT INTO model_signals SELECT * FROM df", {"df": df})
+        self.connection.execute("INSERT INTO model_signals SELECT * FROM df")
 
     def insert_trades(self, df: pd.DataFrame) -> None:
         if df.empty:
             logger.warning("No trades to insert.")
             return
         logger.debug("Inserting %d trades", len(df))
-        self.connection.execute("INSERT INTO trades SELECT * FROM df", {"df": df})
+        self.connection.execute("INSERT INTO trades SELECT * FROM df")
 
     def insert_metrics(self, df: pd.DataFrame) -> None:
         if df.empty:
             logger.warning("No metrics to insert.")
             return
         logger.debug("Inserting %d metrics", len(df))
-        self.connection.execute("INSERT INTO model_metrics SELECT * FROM df", {"df": df})
+        self.connection.execute("INSERT INTO model_metrics SELECT * FROM df")
 
     def close(self) -> None:  # pragma: no cover - passthrough
         self.connection.close()

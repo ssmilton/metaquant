@@ -40,6 +40,7 @@ def backtest(
     end_date: str = typer.Option(...),
     security_ids: str = typer.Option(..., help="Comma separated security ids"),
     params: str = typer.Option("{}", help="JSON string of model parameters"),
+    params_file: Optional[Path] = typer.Option(None, help="Path to JSON file with model parameters"),
     node: Optional[str] = typer.Option(
         None, help="Explicit execution node name (must exist in config nodes)"
     ),
@@ -55,7 +56,18 @@ def backtest(
     engine = BacktestEngine(
         adapter, nodes=cfg.nodes, docker_config=cfg.docker, env_root=cfg.env_root
     )
-    param_dict = json.loads(params)
+
+    # Load parameters from file if provided, otherwise parse JSON string
+    if params_file:
+        param_dict = json.loads(params_file.read_text())
+    else:
+        try:
+            param_dict = json.loads(params)
+        except json.JSONDecodeError as e:
+            print(f"[red]Error parsing --params JSON:[/red] {e}")
+            print(f"[yellow]Tip:[/yellow] In PowerShell, use: --params '{{\"key\":\"value\"}}' or --params-file path/to/params.json")
+            raise typer.Exit(1)
+
     ids = [int(x) for x in security_ids.split(",")]
     tags = [tag.strip() for tag in node_tags.split(",") if tag.strip()] if node_tags else None
     result = engine.run(

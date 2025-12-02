@@ -100,9 +100,12 @@ DDL = [
     );
     """,
     """
+    CREATE SEQUENCE IF NOT EXISTS trade_id_seq START 1;
+    """,
+    """
     CREATE TABLE IF NOT EXISTS trades (
         run_id UUID,
-        trade_id BIGINT GENERATED ALWAYS AS IDENTITY,
+        trade_id BIGINT DEFAULT nextval('trade_id_seq'),
         timestamp TIMESTAMP,
         security_id INTEGER,
         side VARCHAR,
