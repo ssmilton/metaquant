@@ -12,6 +12,7 @@ dependencies = [
     "duckdb>=1.1.0",
     "rich>=13.7",
     "yfinance>=0.2.66",
+    "python-build>=0.2.13",
 ]
 
 [project.scripts]
