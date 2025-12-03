@@ -5,6 +5,8 @@ import argparse
 import datetime as dt
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
+import logging
+import time
 
 import duckdb
 import pandas as pd
@@ -12,6 +14,9 @@ import yfinance as yf
 
 # Reuse the schema helper so running this script is idempotent
 from scripts.init_duckdb_schema import create_schema
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,6 +27,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-date", default=(dt.date.today() - dt.timedelta(days=365)).isoformat(), help="Start date YYYY-MM-DD")
     parser.add_argument("--end-date", default=dt.date.today().isoformat(), help="End date YYYY-MM-DD")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip writing fundamentals metrics")
+    parser.add_argument("--rate-limit-delay", type=float, default=0.5, help="Delay in seconds between ticker fetches (default: 0.5)")
+    parser.add_argument("--batch-size", type=int, help="Number of tickers to fetch in a single batch download (default: all)")
+    parser.add_argument("--retry-attempts", type=int, default=3, help="Number of retry attempts for failed requests (default: 3)")
+    parser.add_argument("--retry-delay", type=float, default=5.0, help="Delay in seconds between retry attempts (default: 5.0)")
     return parser.parse_args()
 
 
@@ -62,18 +71,40 @@ def get_or_create_security_id(con: duckdb.DuckDBPyConnection, ticker: str, info:
     return security_id
 
 
-def download_history(tickers: Iterable[str], start: str, end: str) -> Tuple[pd.DataFrame, bool]:
+def fetch_with_retry(fetch_func, max_retries: int = 3, retry_delay: float = 5.0):
+    """Wrapper function to retry API calls with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return fetch_func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            wait_time = retry_delay * (2 ** attempt)
+            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+    return None
+
+
+def download_history(tickers: Iterable[str], start: str, end: str, retry_attempts: int = 3, retry_delay: float = 5.0) -> Tuple[pd.DataFrame, bool]:
     tickers_list = list(tickers)
     multi = len(tickers_list) > 1
-    hist = yf.download(
-        tickers=tickers_list,
-        start=start,
-        end=end,
-        auto_adjust=False,
-        group_by="ticker",
-        progress=False,
-    )
-    return hist, multi
+
+    def _fetch():
+        return yf.download(
+            tickers=tickers_list,
+            start=start,
+            end=end,
+            auto_adjust=False,
+            group_by="ticker",
+            progress=False,
+        )
+
+    try:
+        hist = fetch_with_retry(_fetch, max_retries=retry_attempts, retry_delay=retry_delay)
+        return hist if hist is not None else pd.DataFrame(), multi
+    except Exception as e:
+        logger.error(f"Failed to download history for {len(tickers_list)} tickers after {retry_attempts} attempts: {e}")
+        return pd.DataFrame(), multi
 
 
 def history_to_rows(hist: pd.DataFrame, ticker: str, security_id: int, multi: bool) -> pd.DataFrame:
@@ -143,29 +174,84 @@ def upsert_fundamentals(con: duckdb.DuckDBPyConnection, df: pd.DataFrame, securi
 def ingest(args: argparse.Namespace) -> None:
     tickers = load_tickers(args)
     if not tickers:
-        print("No tickers provided.")
+        logger.info("No tickers provided.")
         return
 
     db_path = Path(args.db)
     con = ensure_schema(db_path)
     as_of = dt.date.fromisoformat(args.end_date)
 
-    hist, multi = download_history(tickers, args.start_date, args.end_date)
+    # Determine batch size
+    batch_size = args.batch_size if args.batch_size else len(tickers)
+    total_tickers = len(tickers)
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
 
-    for ticker in tickers:
-        ticker_obj = yf.Ticker(ticker)
-        info = ticker_obj.info or {}
-        security_id = get_or_create_security_id(con, ticker, info)
+    logger.info(f"Processing {total_tickers} tickers in batches of {batch_size}")
 
-        price_df = history_to_rows(hist, ticker, security_id, multi)
-        upsert_prices(con, price_df, args.start_date, args.end_date)
+    # Process tickers in batches
+    for batch_idx in range(0, total_tickers, batch_size):
+        batch_tickers = tickers[batch_idx:batch_idx + batch_size]
+        batch_num = (batch_idx // batch_size) + 1
+        total_batches = (total_tickers + batch_size - 1) // batch_size
 
-        if not args.skip_fundamentals:
-            fundamentals_df = fundamentals_rows(security_id, as_of, info)
-            upsert_fundamentals(con, fundamentals_df, security_id, args.end_date)
+        logger.info(f"\nProcessing batch {batch_num}/{total_batches} ({len(batch_tickers)} tickers)...")
+
+        # Rate limiting between batches
+        if batch_idx > 0:
+            logger.info(f"Rate limiting: waiting {args.rate_limit_delay}s before next batch...")
+            time.sleep(args.rate_limit_delay)
+
+        # Download history for this batch
+        hist, multi = download_history(
+            batch_tickers,
+            args.start_date,
+            args.end_date,
+            retry_attempts=args.retry_attempts,
+            retry_delay=args.retry_delay
+        )
+
+        # Process each ticker in the batch
+        for idx, ticker in enumerate(batch_tickers, 1):
+            try:
+                # Get ticker info with retry
+                def _get_ticker_info():
+                    ticker_obj = yf.Ticker(ticker)
+                    return ticker_obj.info or {}
+
+                info = fetch_with_retry(_get_ticker_info, max_retries=args.retry_attempts, retry_delay=args.retry_delay)
+                if info is None:
+                    info = {}
+
+                security_id = get_or_create_security_id(con, ticker, info)
+
+                # Process price data
+                price_df = history_to_rows(hist, ticker, security_id, multi)
+                if not price_df.empty:
+                    upsert_prices(con, price_df, args.start_date, args.end_date)
+                    logger.info(f"  [{batch_num}/{total_batches}] {ticker} ({idx}/{len(batch_tickers)}): Inserted {len(price_df)} price records")
+                else:
+                    logger.warning(f"  [{batch_num}/{total_batches}] {ticker} ({idx}/{len(batch_tickers)}): No price data available")
+
+                # Process fundamentals if not skipped
+                if not args.skip_fundamentals:
+                    fundamentals_df = fundamentals_rows(security_id, as_of, info)
+                    if not fundamentals_df.empty:
+                        upsert_fundamentals(con, fundamentals_df, security_id, args.end_date)
+                        logger.info(f"  [{batch_num}/{total_batches}] {ticker}: Inserted {len(fundamentals_df)} fundamental metrics")
+
+                total_success += 1
+                total_processed += 1
+
+            except Exception as e:
+                logger.error(f"  [{batch_num}/{total_batches}] {ticker} ({idx}/{len(batch_tickers)}): Failed - {e}")
+                total_failed += 1
+                total_processed += 1
 
     con.close()
-    print(f"Ingested {len(tickers)} tickers into {db_path}")
+    logger.info(f"\nCompleted! Processed {total_processed} tickers: {total_success} successful, {total_failed} failed")
+    logger.info(f"Data saved to {db_path}")
 
 
 if __name__ == "__main__":

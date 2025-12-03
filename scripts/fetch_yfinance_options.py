@@ -6,6 +6,7 @@ import datetime as dt
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
+import time
 
 import duckdb
 import pandas as pd
@@ -26,6 +27,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--days-to-expiry-min", type=int, default=0, help="Minimum days to expiration (default: 0)")
     parser.add_argument("--days-to-expiry-max", type=int, help="Maximum days to expiration (default: no limit)")
     parser.add_argument("--option-type", choices=["calls", "puts", "both"], default="both", help="Type of options to fetch")
+    parser.add_argument("--rate-limit-delay", type=float, default=0.5, help="Delay in seconds between API requests (default: 0.5)")
+    parser.add_argument("--retry-attempts", type=int, default=3, help="Number of retry attempts for failed requests (default: 3)")
+    parser.add_argument("--retry-delay", type=float, default=5.0, help="Delay in seconds between retry attempts (default: 5.0)")
     return parser.parse_args()
 
 
@@ -121,23 +125,39 @@ def filter_expirations(
     return filtered
 
 
-def fetch_options_chain(ticker: str, expiration: dt.date, option_type: str) -> pd.DataFrame:
-    """Fetch options chain for a specific expiration date."""
+def fetch_with_retry(fetch_func, max_retries: int = 3, retry_delay: float = 5.0):
+    """Wrapper function to retry API calls with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return fetch_func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            wait_time = retry_delay * (2 ** attempt)
+            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+    return None
+
+
+def fetch_options_chain(ticker: str, expiration: dt.date, option_type: str, retry_attempts: int = 3, retry_delay: float = 5.0) -> pd.DataFrame:
+    """Fetch options chain for a specific expiration date with retry logic."""
     ticker_obj = yf.Ticker(ticker)
 
-    try:
+    def _fetch():
         opt = ticker_obj.option_chain(expiration.strftime("%Y-%m-%d"))
 
         if option_type == "calls":
-            df = opt.calls
+            return opt.calls
         elif option_type == "puts":
-            df = opt.puts
+            return opt.puts
         else:  # both
-            df = pd.concat([opt.calls, opt.puts], ignore_index=True)
+            return pd.concat([opt.calls, opt.puts], ignore_index=True)
 
-        return df
+    try:
+        df = fetch_with_retry(_fetch, max_retries=retry_attempts, retry_delay=retry_delay)
+        return df if df is not None else pd.DataFrame()
     except Exception as e:
-        logger.warning(f"Failed to fetch options for {ticker} expiring {expiration}: {e}")
+        logger.warning(f"Failed to fetch options for {ticker} expiring {expiration} after {retry_attempts} attempts: {e}")
         return pd.DataFrame()
 
 
@@ -236,13 +256,21 @@ def ingest_options(args: argparse.Namespace) -> None:
 
     total_options = 0
 
-    for ticker in tickers:
-        logger.info(f"Processing options for {ticker}...")
+    for idx, ticker in enumerate(tickers, 1):
+        logger.info(f"Processing options for {ticker} ({idx}/{len(tickers)})...")
+
+        # Rate limiting delay between tickers
+        if idx > 1:
+            time.sleep(args.rate_limit_delay)
 
         # Ensure underlying security exists
-        ticker_obj = yf.Ticker(ticker)
-        info = ticker_obj.info or {}
-        underlying_id = get_or_create_security_id(con, ticker, is_option=False)
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            info = ticker_obj.info or {}
+            underlying_id = get_or_create_security_id(con, ticker, is_option=False)
+        except Exception as e:
+            logger.error(f"Failed to get ticker info for {ticker}: {e}")
+            continue
 
         # Get available expirations
         try:
@@ -275,7 +303,16 @@ def ingest_options(args: argparse.Namespace) -> None:
             days_to_exp = (expiration - fetch_date).days
             logger.info(f"  Fetching options expiring {expiration} (DTE: {days_to_exp})...")
 
-            options_df = fetch_options_chain(ticker, expiration, args.option_type)
+            # Rate limiting between expiration fetches
+            time.sleep(args.rate_limit_delay)
+
+            options_df = fetch_options_chain(
+                ticker,
+                expiration,
+                args.option_type,
+                retry_attempts=args.retry_attempts,
+                retry_delay=args.retry_delay
+            )
 
             if options_df.empty:
                 logger.warning(f"  No data for expiration {expiration}")
