@@ -1,0 +1,16 @@
+{
+  "model_id": "stock_screener_options_v1",
+  "version": "1.0.0",
+  "description": "Multi-factor stock screener with options-aware scoring, adapted to MetaQuant contract",
+  "author": "shane",
+  "runtime": "host",
+  "platform": "any",
+  "entrypoint": "python run_model.py",
+  "dependencies": {
+    "python": ">=3.11",
+    "requirements_file": "requirements.txt"
+  },
+  "input_types": ["prices"],
+  "output_type": "signals",
+  "tags": ["stock-screener", "multi-factor", "options-overlay"]
+}

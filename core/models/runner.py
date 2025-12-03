@@ -54,22 +54,31 @@ class HostModelRunner(BaseModelRunner):
 
     def _python_executable(self) -> Path:
         script_dir = "Scripts" if os.name == "nt" else "bin"
-        return self.env_dir / script_dir / "python"
+        python_name = "python.exe" if os.name == "nt" else "python"
+        return self.env_dir / script_dir / python_name
 
     def _bin_dir(self) -> Path:
         return self._python_executable().parent
 
     def _ensure_environment(self) -> None:
+        import shutil
+
         python_path = self._python_executable()
-        if python_path.exists():
-            return
 
-        logger.info("Creating venv for %s at %s", self.manifest.model_id, self.env_dir)
-        self.env_dir.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["uv", "venv", str(self.env_dir), "--python", sys.executable], check=True
-        )
+        # Check if we should clear the venv (useful for OneDrive/locked file issues)
+        if os.environ.get("UV_VENV_CLEAR") == "1" and self.env_dir.exists():
+            logger.info("UV_VENV_CLEAR=1, removing existing venv at %s", self.env_dir)
+            shutil.rmtree(self.env_dir, ignore_errors=True)
 
+        # Create venv if it doesn't exist
+        if not python_path.exists():
+            logger.info("Creating venv for %s at %s", self.manifest.model_id, self.env_dir)
+            self.env_dir.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["uv", "venv", str(self.env_dir), "--python", sys.executable], check=True
+            )
+
+        # Always install/update requirements if specified
         requirements_file = self.manifest.dependencies.requirements_file if self.manifest.dependencies else None
         if requirements_file:
             req_path = (self.working_dir / requirements_file).resolve()
@@ -84,6 +93,8 @@ class HostModelRunner(BaseModelRunner):
                         "install",
                         "--python",
                         str(python_path),
+                        "--link-mode",
+                        "copy",
                         "-r",
                         str(req_path),
                     ],
