@@ -52,6 +52,13 @@ class DuckDBAdapter:
             logger.warning("No signals to insert.")
             return
         logger.debug("Inserting %d signals", len(df))
+        # Convert timestamp string to datetime and rename meta to meta_json
+        df = df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        if 'meta' in df.columns:
+            df = df.rename(columns={'meta': 'meta_json'})
+        # Reorder columns to match table schema
+        df = df[['run_id', 'timestamp', 'security_id', 'signal_type', 'strength', 'confidence', 'meta_json']]
         self.connection.execute("INSERT INTO model_signals SELECT * FROM df")
 
     def insert_trades(self, df: pd.DataFrame) -> None:
@@ -59,7 +66,12 @@ class DuckDBAdapter:
             logger.warning("No trades to insert.")
             return
         logger.debug("Inserting %d trades", len(df))
-        self.connection.execute("INSERT INTO trades SELECT * FROM df")
+        # Convert timestamp string to datetime
+        df = df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Reorder columns to match table schema (excluding trade_id which has DEFAULT)
+        df = df[['run_id', 'timestamp', 'security_id', 'side', 'quantity', 'price', 'fees', 'pnl']]
+        self.connection.execute("INSERT INTO trades (run_id, timestamp, security_id, side, quantity, price, fees, pnl) SELECT * FROM df")
 
     def insert_metrics(self, df: pd.DataFrame) -> None:
         if df.empty:
