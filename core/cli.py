@@ -59,7 +59,13 @@ def backtest(
 
     # Load parameters from file if provided, otherwise parse JSON string
     if params_file:
-        param_dict = json.loads(params_file.read_text())
+        # Resolve the path to handle Windows .\file syntax correctly
+        resolved_path = params_file.resolve()
+        if not resolved_path.exists():
+            print(f"[red]Error:[/red] Parameter file not found: {params_file}")
+            print(f"[yellow]Resolved to:[/yellow] {resolved_path}")
+            raise typer.Exit(1)
+        param_dict = json.loads(resolved_path.read_text())
     else:
         try:
             param_dict = json.loads(params)
