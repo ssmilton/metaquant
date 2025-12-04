@@ -52,7 +52,8 @@ def backtest(
     cfg = load_app_config(config_path)
     registry = ModelRegistry()
     manifest = registry.get_model(model_id)
-    adapter = DuckDBAdapter(cfg.storage.duckdb_path)
+    # Open market data database in read-only mode to avoid write contention
+    adapter = DuckDBAdapter(cfg.storage.duckdb_path, read_only=True)
     engine = BacktestEngine(
         adapter, nodes=cfg.nodes, docker_config=cfg.docker, env_root=cfg.env_root
     )
