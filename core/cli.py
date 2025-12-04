@@ -56,6 +56,16 @@ def backtest(
     registry = ModelRegistry()
     manifest = registry.get_model(model_id)
 
+    # Check if model requires securities based on input_types
+    # Models with non-security input types (e.g., fred_series) are macro models
+    requires_securities = True
+    if hasattr(manifest, 'input_types') and manifest.input_types:
+        # If input_types doesn't include standard security data, it's a macro model
+        security_input_types = {'daily_prices', 'options_quotes', 'fundamentals'}
+        if not any(it in security_input_types for it in manifest.input_types):
+            requires_securities = False
+            print(f"[cyan]Model {model_id} is a macro model (input_types: {manifest.input_types})[/cyan]")
+
     # Validate mutual exclusivity of security specification methods
     specified_methods = sum([
         security_ids is not None,
@@ -63,7 +73,7 @@ def backtest(
         tickers_file is not None
     ])
 
-    if specified_methods == 0:
+    if specified_methods == 0 and requires_securities:
         print("[red]Error:[/red] Must specify one of: --security-ids, --tickers, or --tickers-file")
         raise typer.Exit(1)
 
@@ -78,7 +88,11 @@ def backtest(
     )
 
     # Resolve security IDs from tickers if needed
-    if security_ids:
+    # For macro models, use empty list if no securities specified
+    if not requires_securities and specified_methods == 0:
+        ids = []
+        print("[cyan]Macro model: running without securities[/cyan]")
+    elif security_ids:
         ids = [int(x) for x in security_ids.split(",")]
     elif tickers:
         ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
@@ -142,8 +156,19 @@ def backtest(
         node_name=node,
         node_tags=tags,
     )
-    summary = reports.summarize_run(result.run_id, result.equity_curve)
+
     print("Run ID:", result.run_id)
+
+    # For macro models without portfolio simulation, show signal count instead of metrics
+    if result.equity_curve.empty:
+        summary = {
+            "run_id": result.run_id,
+            "signal_count": len(result.signals),
+            "note": "Macro model - portfolio simulation not applicable"
+        }
+    else:
+        summary = reports.summarize_run(result.run_id, result.equity_curve)
+
     print(json.dumps(summary, indent=2))
 
 

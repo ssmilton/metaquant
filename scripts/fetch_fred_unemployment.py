@@ -36,7 +36,28 @@ def fetch_fred_series(series_id: str, start_date: Optional[str] = None) -> pd.Da
     url = FRED_CSV_URL + "?" + "&".join(params)
 
     df = pd.read_csv(url)
-    df = df.rename(columns={"DATE": "date", series_id: "value"})
+
+    # Check what columns we actually got
+    if df.empty:
+        raise ValueError(f"No data returned for series {series_id}")
+
+    # Handle different possible column names
+    # FRED API returns 'observation_date' and the series ID as column names
+    if "observation_date" in df.columns:
+        df = df.rename(columns={"observation_date": "date"})
+    elif "DATE" in df.columns:
+        df = df.rename(columns={"DATE": "date"})
+    elif "date" not in df.columns:
+        # Assume first column is date
+        df = df.rename(columns={df.columns[0]: "date"})
+
+    # Handle value column - FRED returns data in a column with the series ID
+    if series_id in df.columns:
+        df = df.rename(columns={series_id: "value"})
+    elif "value" not in df.columns:
+        # Assume second column is value
+        df = df.rename(columns={df.columns[1]: "value"})
+
     df["date"] = pd.to_datetime(df["date"])
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     df = df.dropna(subset=["value"])
@@ -59,10 +80,12 @@ def write_to_duckdb(df: pd.DataFrame, db_path: Path) -> None:
         );
         """
     )
+    # Register the DataFrame and use it in the query
+    con.register("df_temp", df)
     con.execute(
-        "INSERT OR REPLACE INTO fred_series SELECT * FROM df ORDER BY date",
-        {"df": df},
+        "INSERT OR REPLACE INTO fred_series SELECT * FROM df_temp ORDER BY date"
     )
+    con.unregister("df_temp")
     con.close()
 
 

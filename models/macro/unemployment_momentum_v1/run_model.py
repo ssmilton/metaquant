@@ -11,10 +11,11 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-
+# Database path - go up 3 levels from model dir to project root
+DB_PATH = Path(__file__).parent.parent.parent.parent / 'data' / 'metaquant.duckdb'
 @dataclass
 class ModelParams:
-    db_path: Path = Path("data/metaquant.duckdb")
+    db_path: Path = DB_PATH
     series_id: str = "UNRATE"
     smoothing_window: int = 6
     rsi_period: int = 14
