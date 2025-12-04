@@ -65,16 +65,20 @@ class BacktestEngine:
     ) -> Dict:
         universe = [SecurityDefinition(security_id=i) for i in security_ids]
         price_payloads: List[Dict] = []
-        for sid, group in prices.groupby("security_id"):
-            payload = {
-                "security_id": int(sid),
-                "dates": group["date"].astype(str).tolist(),
-                "close": group["close"].tolist(),
-            }
-            # Include volume if available
-            if "volume" in group.columns:
-                payload["volume"] = group["volume"].tolist()
-            price_payloads.append(payload)
+
+        # Only process prices if DataFrame is not empty
+        if not prices.empty:
+            for sid, group in prices.groupby("security_id"):
+                payload = {
+                    "security_id": int(sid),
+                    "dates": group["date"].astype(str).tolist(),
+                    "close": group["close"].tolist(),
+                }
+                # Include volume if available
+                if "volume" in group.columns:
+                    payload["volume"] = group["volume"].tolist()
+                price_payloads.append(payload)
+
         model_input = ModelInput(
             mode="backtest",
             model_id=manifest.model_id,
@@ -120,25 +124,32 @@ class BacktestEngine:
         node_tags: Optional[List[str]] = None,
     ) -> BacktestResult:
         run_id = str(uuid.uuid4())
+        security_ids_list = list(security_ids)
+        is_macro_model = len(security_ids_list) == 0
 
         # Calculate fetch start date with lookback
         start_dt = pd.to_datetime(start_date)
         fetch_start_date = (start_dt - pd.Timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
-        logger.info(f"Fetching prices from {fetch_start_date} (lookback) to {end_date} (backtest: {start_date} to {end_date})")
-        prices = self.market_data_adapter.fetch_daily_prices(security_ids, fetch_start_date, end_date)
+        # Fetch prices for security-based models, skip for macro models
+        if is_macro_model:
+            logger.info(f"Macro model: skipping price fetch")
+            prices = pd.DataFrame()
+        else:
+            logger.info(f"Fetching prices from {fetch_start_date} (lookback) to {end_date} (backtest: {start_date} to {end_date})")
+            prices = self.market_data_adapter.fetch_daily_prices(security_ids_list, fetch_start_date, end_date)
 
-        if prices.empty:
+        if prices.empty and not is_macro_model:
             # Get available date ranges to provide helpful error message
             available_ranges = self.market_data_adapter.connection.execute("""
                 SELECT security_id, MIN(date) as min_date, MAX(date) as max_date
                 FROM daily_prices
                 WHERE security_id IN (SELECT UNNEST(?))
                 GROUP BY security_id
-            """, [list(security_ids)]).fetchall()
+            """, [security_ids_list]).fetchall()
 
             error_msg = (
-                f"No price data found for security_ids={list(security_ids)} "
+                f"No price data found for security_ids={security_ids_list} "
                 f"in date range {fetch_start_date} to {end_date} (backtest: {start_date} to {end_date}, lookback: {lookback_days} days).\n"
             )
             if available_ranges:
@@ -158,33 +169,40 @@ class BacktestEngine:
         validated = ModelOutput(**output)
         signals_df = pd.DataFrame([s.model_dump() for s in validated.signals])
 
-        portfolio = Portfolio(initial_capital, transaction_cost_bps, slippage_bps)
-        trades: List[Dict] = []
-        # naive policy: buy 1 unit on long, sell all on short
-        if not signals_df.empty:
-            for _, signal in signals_df.sort_values("timestamp").iterrows():
-                sid = int(signal["security_id"])
-                ts = signal["timestamp"]
-                price_row = prices[(prices["security_id"] == sid) & (prices["date"] == ts)]
-                if price_row.empty:
-                    continue
-                px = float(price_row.iloc[0]["close"])
-                if signal["signal_type"] == "long":
-                    portfolio.buy(ts, sid, px, quantity=1)
-                elif signal["signal_type"] == "short":
-                    portfolio.sell(ts, sid, px, quantity=1)
-        for trade in portfolio.trades:
-            trades.append(trade.__dict__)
-        trades_df = pd.DataFrame(trades)
+        # For macro models, skip portfolio simulation
+        if is_macro_model:
+            logger.info("Macro model: skipping portfolio simulation")
+            trades_df = pd.DataFrame()
+            equity_df = pd.DataFrame()
+            metrics = {}
+        else:
+            portfolio = Portfolio(initial_capital, transaction_cost_bps, slippage_bps)
+            trades: List[Dict] = []
+            # naive policy: buy 1 unit on long, sell all on short
+            if not signals_df.empty:
+                for _, signal in signals_df.sort_values("timestamp").iterrows():
+                    sid = int(signal["security_id"])
+                    ts = signal["timestamp"]
+                    price_row = prices[(prices["security_id"] == sid) & (prices["date"] == ts)]
+                    if price_row.empty:
+                        continue
+                    px = float(price_row.iloc[0]["close"])
+                    if signal["signal_type"] == "long":
+                        portfolio.buy(ts, sid, px, quantity=1)
+                    elif signal["signal_type"] == "short":
+                        portfolio.sell(ts, sid, px, quantity=1)
+            for trade in portfolio.trades:
+                trades.append(trade.__dict__)
+            trades_df = pd.DataFrame(trades)
 
-        # Calculate equity curve only for backtest period (not lookback)
-        equity_records: List[Dict] = []
-        backtest_dates = prices[prices["date"] >= start_date]["date"].unique()
-        for date in sorted(backtest_dates):
-            equity = portfolio.mark_to_market(date, prices)
-            equity_records.append({"date": date, "equity": equity})
-        equity_df = pd.DataFrame(equity_records)
-        metrics = self._compute_basic_metrics(equity_df)
+            # Calculate equity curve only for backtest period (not lookback)
+            equity_records: List[Dict] = []
+            backtest_dates = prices[prices["date"] >= start_date]["date"].unique()
+            for date in sorted(backtest_dates):
+                equity = portfolio.mark_to_market(date, prices)
+                equity_records.append({"date": date, "equity": equity})
+            equity_df = pd.DataFrame(equity_records)
+            metrics = self._compute_basic_metrics(equity_df)
 
         # Create model-specific results database
         results_db_path = self.results_db_dir / f"{manifest.model_id}.duckdb"
@@ -207,16 +225,18 @@ class BacktestEngine:
                     "notes": "",
                 }
             )
-            results_adapter.insert_signals(signals_df.assign(run_id=run_id))
+            if not signals_df.empty:
+                results_adapter.insert_signals(signals_df.assign(run_id=run_id))
             if not trades_df.empty:
                 results_adapter.insert_trades(trades_df.assign(run_id=run_id))
-            metrics_df = pd.DataFrame(
-                [
-                    {"run_id": run_id, "metric_name": k, "scope": "total", "metric_value": v}
-                    for k, v in metrics.items()
-                ]
-            )
-            results_adapter.insert_metrics(metrics_df)
+            if metrics:
+                metrics_df = pd.DataFrame(
+                    [
+                        {"run_id": run_id, "metric_name": k, "scope": "total", "metric_value": v}
+                        for k, v in metrics.items()
+                    ]
+                )
+                results_adapter.insert_metrics(metrics_df)
         finally:
             results_adapter.close()
 
