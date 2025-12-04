@@ -39,6 +39,7 @@ Run `quantfw init-db` (or execute `scripts/init_duckdb_schema.py`) to create the
 - `options_quotes`: greeks/IV per option/date
 - `fundamentals`: metric values per report date
 - `market_features`: market/regime descriptors
+- `fred_series`: cached FRED macro time series (e.g., civilian unemployment rate)
 
 ### Model-Specific Results Databases (`data/<model_id>.duckdb`)
 Each backtest run automatically creates a model_id results database containing:
@@ -48,6 +49,9 @@ Each backtest run automatically creates a model_id results database containing:
 - `model_metrics`: performance metrics (Sharpe, drawdown, etc.)
 
 This design avoids DuckDB write contention (DuckDB allows only one writer at a time), enabling multiple models to run in parallel without database locking conflicts.
+
+### FRED macro data
+Use `scripts/fetch_fred_unemployment.py` to pull the UNRATE series from FRED into the `fred_series` table. The data lives next to other market features in `data/metaquant.duckdb` and feeds macro models such as `unemployment_momentum_v1`.
 
 ## Model Contract
 Models are external executables. Manifest (`model.json`) fields include `model_id`, `version`, `entrypoint`, `input_types`, and `output_type`. The runner launches `entrypoint` in the model directory, writes JSON payload to stdin, and expects JSON output:

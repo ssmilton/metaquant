@@ -43,6 +43,41 @@ class DuckDBAdapter:
         logger.debug("Fetching market features between %s and %s", start_date, end_date)
         return self.connection.execute(query, [start_date, end_date]).fetch_df()
 
+    def fetch_fred_series(
+        self, series_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None
+    ) -> pd.DataFrame:
+        """Fetch a stored FRED time series from the fred_series table.
+
+        Args:
+            series_id: The FRED series identifier (e.g., "UNRATE").
+            start_date: Optional inclusive start date filter (YYYY-MM-DD).
+            end_date: Optional inclusive end date filter (YYYY-MM-DD).
+
+        Returns:
+            DataFrame ordered by date with columns [date, value, title].
+        """
+
+        clauses = ["series_id = ?"]
+        params: List[object] = [series_id]
+        if start_date:
+            clauses.append("date >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("date <= ?")
+            params.append(end_date)
+
+        where_clause = " AND ".join(clauses)
+        query = f"""
+            SELECT date, value, title
+            FROM fred_series
+            WHERE {where_clause}
+            ORDER BY date
+        """
+        logger.debug(
+            "Fetching fred_series %s with params start=%s end=%s", series_id, start_date, end_date
+        )
+        return self.connection.execute(query, params).fetch_df()
+
     def lookup_security_ids(self, tickers: Iterable[str]) -> List[int]:
         """Look up security IDs from ticker symbols (case-insensitive).
 
