@@ -43,6 +43,50 @@ class DuckDBAdapter:
         logger.debug("Fetching market features between %s and %s", start_date, end_date)
         return self.connection.execute(query, [start_date, end_date]).fetch_df()
 
+    def lookup_security_ids(self, tickers: Iterable[str]) -> List[int]:
+        """Look up security IDs from ticker symbols (case-insensitive).
+
+        Args:
+            tickers: List of ticker symbols (e.g., ["AAPL", "MSFT", "aapl"])
+
+        Returns:
+            List of security IDs corresponding to the tickers
+
+        Raises:
+            ValueError: If any tickers are not found in the database
+        """
+        ticker_list = [t.upper() for t in tickers]
+        if not ticker_list:
+            return []
+
+        query = """
+            SELECT ticker, security_id
+            FROM securities
+            WHERE UPPER(ticker) IN ({placeholders})
+            AND active = true
+        """.format(placeholders=",".join(["?"] * len(ticker_list)))
+
+        logger.debug("Looking up security IDs for tickers: %s", ticker_list)
+        result = self.connection.execute(query, ticker_list).fetch_df()
+
+        if result.empty:
+            raise ValueError(f"No securities found for tickers: {ticker_list}")
+
+        # Normalize result tickers to uppercase for matching
+        result["ticker_upper"] = result["ticker"].str.upper()
+        found_tickers = set(result["ticker_upper"].tolist())
+        missing_tickers = set(ticker_list) - found_tickers
+
+        if missing_tickers:
+            raise ValueError(
+                f"Tickers not found in database: {sorted(missing_tickers)}. "
+                f"Available tickers: {sorted(found_tickers)}"
+            )
+
+        # Return IDs in the same order as input tickers
+        ticker_to_id = dict(zip(result["ticker_upper"], result["security_id"]))
+        return [int(ticker_to_id[ticker]) for ticker in ticker_list]
+
     def insert_model_run(self, row: dict) -> None:
         if self.read_only:
             raise RuntimeError("Cannot insert into read-only database")

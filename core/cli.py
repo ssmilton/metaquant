@@ -38,7 +38,9 @@ def backtest(
     model_id: str = typer.Option(..., help="Model identifier"),
     start_date: str = typer.Option(...),
     end_date: str = typer.Option(...),
-    security_ids: str = typer.Option(..., help="Comma separated security ids"),
+    security_ids: Optional[str] = typer.Option(None, help="Comma separated security ids"),
+    tickers: Optional[str] = typer.Option(None, help="Comma separated ticker symbols (e.g., AAPL,MSFT)"),
+    tickers_file: Optional[Path] = typer.Option(None, help="Path to file with ticker symbols (one per line)"),
     params: str = typer.Option("{}", help="JSON string of model parameters"),
     params_file: Optional[Path] = typer.Option(None, help="Path to JSON file with model parameters"),
     node: Optional[str] = typer.Option(
@@ -52,11 +54,60 @@ def backtest(
     cfg = load_app_config(config_path)
     registry = ModelRegistry()
     manifest = registry.get_model(model_id)
+
+    # Validate mutual exclusivity of security specification methods
+    specified_methods = sum([
+        security_ids is not None,
+        tickers is not None,
+        tickers_file is not None
+    ])
+
+    if specified_methods == 0:
+        print("[red]Error:[/red] Must specify one of: --security-ids, --tickers, or --tickers-file")
+        raise typer.Exit(1)
+
+    if specified_methods > 1:
+        print("[red]Error:[/red] Cannot specify more than one of: --security-ids, --tickers, --tickers-file")
+        raise typer.Exit(1)
+
     # Open market data database in read-only mode to avoid write contention
     adapter = DuckDBAdapter(cfg.storage.duckdb_path, read_only=True)
     engine = BacktestEngine(
         adapter, nodes=cfg.nodes, docker_config=cfg.docker, env_root=cfg.env_root
     )
+
+    # Resolve security IDs from tickers if needed
+    if security_ids:
+        ids = [int(x) for x in security_ids.split(",")]
+    elif tickers:
+        ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        try:
+            ids = adapter.lookup_security_ids(ticker_list)
+            print(f"[cyan]Resolved tickers {ticker_list} to security IDs {ids}[/cyan]")
+        except ValueError as e:
+            print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+    else:  # tickers_file
+        resolved_path = tickers_file.resolve()
+        if not resolved_path.exists():
+            print(f"[red]Error:[/red] Tickers file not found: {tickers_file}")
+            print(f"[yellow]Resolved to:[/yellow] {resolved_path}")
+            raise typer.Exit(1)
+        ticker_list = [
+            line.strip().upper()
+            for line in resolved_path.read_text().splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        if not ticker_list:
+            print(f"[red]Error:[/red] No tickers found in file: {tickers_file}")
+            raise typer.Exit(1)
+        try:
+            ids = adapter.lookup_security_ids(ticker_list)
+            print(f"[cyan]Loaded {len(ticker_list)} tickers from {tickers_file}[/cyan]")
+            print(f"[cyan]Resolved to security IDs {ids}[/cyan]")
+        except ValueError as e:
+            print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
 
     # Load parameters from file if provided, otherwise parse JSON string
     if params_file:
@@ -75,7 +126,6 @@ def backtest(
             print(f"[yellow]Tip:[/yellow] In PowerShell, use: --params '{{\"key\":\"value\"}}' or --params-file path/to/params.json")
             raise typer.Exit(1)
 
-    ids = [int(x) for x in security_ids.split(",")]
     tags = [tag.strip() for tag in node_tags.split(",") if tag.strip()] if node_tags else None
     result = engine.run(
         manifest,
