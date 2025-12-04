@@ -43,6 +43,7 @@ def backtest(
     tickers_file: Optional[Path] = typer.Option(None, help="Path to file with ticker symbols (one per line)"),
     params: str = typer.Option("{}", help="JSON string of model parameters"),
     params_file: Optional[Path] = typer.Option(None, help="Path to JSON file with model parameters"),
+    lookback_days: int = typer.Option(365, help="Days of historical data before start_date for model lookback calculations (default: 365)"),
     node: Optional[str] = typer.Option(
         None, help="Explicit execution node name (must exist in config nodes)"
     ),
@@ -137,6 +138,7 @@ def backtest(
         initial_capital=cfg.backtest_defaults.initial_capital,
         transaction_cost_bps=cfg.backtest_defaults.transaction_cost_bps,
         slippage_bps=cfg.backtest_defaults.slippage_bps,
+        lookback_days=lookback_days,
         node_name=node,
         node_tags=tags,
     )
