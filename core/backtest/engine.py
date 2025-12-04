@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
@@ -14,6 +15,7 @@ from core.models.runner import ModelRunnerFactory
 from core.registry.schema import ExecutionNode, ModelManifest
 from core.runtime.nodes import select_node
 from core.config import DockerRuntimeConfig
+from scripts.init_model_results_schema import create_model_results_schema
 from .portfolio import Portfolio
 
 logger = logging.getLogger(__name__)
@@ -35,8 +37,10 @@ class BacktestEngine:
         nodes: Optional[List[ExecutionNode]] = None,
         docker_config: Optional[DockerRuntimeConfig] = None,
         env_root: str = ".envs",
+        results_db_dir: str | Path = "data",
     ) -> None:
-        self.adapter = adapter
+        self.market_data_adapter = adapter  # Read-only adapter for market data
+        self.results_db_dir = Path(results_db_dir)
         self.nodes = nodes or [
             ExecutionNode(
                 name="local-linux-dev",
@@ -113,11 +117,11 @@ class BacktestEngine:
         node_tags: Optional[List[str]] = None,
     ) -> BacktestResult:
         run_id = str(uuid.uuid4())
-        prices = self.adapter.fetch_daily_prices(security_ids, start_date, end_date)
+        prices = self.market_data_adapter.fetch_daily_prices(security_ids, start_date, end_date)
 
         if prices.empty:
             # Get available date ranges to provide helpful error message
-            available_ranges = self.adapter.connection.execute("""
+            available_ranges = self.market_data_adapter.connection.execute("""
                 SELECT security_id, MIN(date) as min_date, MAX(date) as max_date
                 FROM daily_prices
                 WHERE security_id IN (SELECT UNNEST(?))
@@ -171,30 +175,39 @@ class BacktestEngine:
         equity_df = pd.DataFrame(equity_records)
         metrics = self._compute_basic_metrics(equity_df)
 
-        # persistence stubs
-        self.adapter.insert_model_run(
-            {
-                "run_id": run_id,
-                "model_id": manifest.model_id,
-                "model_version": manifest.version,
-                "experiment_id": None,
-                "start_date": start_date,
-                "end_date": end_date,
-                "params_json": params,
-                "created_at": pd.Timestamp.utcnow(),
-                "notes": "",
-            }
-        )
-        self.adapter.insert_signals(signals_df.assign(run_id=run_id))
-        if not trades_df.empty:
-            self.adapter.insert_trades(trades_df.assign(run_id=run_id))
-        metrics_df = pd.DataFrame(
-            [
-                {"run_id": run_id, "metric_name": k, "scope": "total", "metric_value": v}
-                for k, v in metrics.items()
-            ]
-        )
-        self.adapter.insert_metrics(metrics_df)
+        # Create model-specific results database
+        results_db_path = self.results_db_dir / f"{manifest.model_id}_{run_id}.duckdb"
+        logger.info("Writing results to %s", results_db_path)
+        create_model_results_schema(results_db_path)
+        results_adapter = DuckDBAdapter(results_db_path, read_only=False)
+
+        # Persist results to model-specific database
+        try:
+            results_adapter.insert_model_run(
+                {
+                    "run_id": run_id,
+                    "model_id": manifest.model_id,
+                    "model_version": manifest.version,
+                    "experiment_id": None,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "params_json": params,
+                    "created_at": pd.Timestamp.utcnow(),
+                    "notes": "",
+                }
+            )
+            results_adapter.insert_signals(signals_df.assign(run_id=run_id))
+            if not trades_df.empty:
+                results_adapter.insert_trades(trades_df.assign(run_id=run_id))
+            metrics_df = pd.DataFrame(
+                [
+                    {"run_id": run_id, "metric_name": k, "scope": "total", "metric_value": v}
+                    for k, v in metrics.items()
+                ]
+            )
+            results_adapter.insert_metrics(metrics_df)
+        finally:
+            results_adapter.close()
 
         return BacktestResult(run_id, signals_df, trades_df, equity_df, metrics)
 

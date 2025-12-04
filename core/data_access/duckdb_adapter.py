@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class DuckDBAdapter:
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, read_only: bool = False) -> None:
         self.db_path = Path(db_path)
-        self.connection = duckdb.connect(str(self.db_path))
-        logger.debug("Connected to DuckDB at %s", self.db_path)
+        self.read_only = read_only
+        self.connection = duckdb.connect(str(self.db_path), read_only=read_only)
+        logger.debug("Connected to DuckDB at %s (read_only=%s)", self.db_path, read_only)
 
     def fetch_daily_prices(self, security_ids: Iterable[int], start_date: str, end_date: str) -> pd.DataFrame:
         ids = list(security_ids)
@@ -43,11 +44,15 @@ class DuckDBAdapter:
         return self.connection.execute(query, [start_date, end_date]).fetch_df()
 
     def insert_model_run(self, row: dict) -> None:
+        if self.read_only:
+            raise RuntimeError("Cannot insert into read-only database")
         df = pd.DataFrame([row])
         logger.debug("Inserting model run: %s", row)
         self.connection.execute("INSERT INTO model_runs SELECT * FROM df")
 
     def insert_signals(self, df: pd.DataFrame) -> None:
+        if self.read_only:
+            raise RuntimeError("Cannot insert into read-only database")
         if df.empty:
             logger.warning("No signals to insert.")
             return
@@ -62,6 +67,8 @@ class DuckDBAdapter:
         self.connection.execute("INSERT INTO model_signals SELECT * FROM df")
 
     def insert_trades(self, df: pd.DataFrame) -> None:
+        if self.read_only:
+            raise RuntimeError("Cannot insert into read-only database")
         if df.empty:
             logger.warning("No trades to insert.")
             return
@@ -74,6 +81,8 @@ class DuckDBAdapter:
         self.connection.execute("INSERT INTO trades (run_id, timestamp, security_id, side, quantity, price, fees, pnl) SELECT * FROM df")
 
     def insert_metrics(self, df: pd.DataFrame) -> None:
+        if self.read_only:
+            raise RuntimeError("Cannot insert into read-only database")
         if df.empty:
             logger.warning("No metrics to insert.")
             return
