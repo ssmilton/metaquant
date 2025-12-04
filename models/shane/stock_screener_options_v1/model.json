@@ -10,7 +10,7 @@
     "python": ">=3.11",
     "requirements_file": "requirements.txt"
   },
-  "input_types": ["prices"],
+  "input_types": ["prices", "options"],
   "output_type": "signals",
   "tags": ["stock-screener", "multi-factor", "options-overlay"]
 }

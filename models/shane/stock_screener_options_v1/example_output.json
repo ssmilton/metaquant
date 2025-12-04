@@ -1,0 +1,40 @@
+{
+  "model_id": "stock_screener_options_v1",
+  "run_id": "example-run-uuid",
+  "signals": [
+    {
+      "timestamp": "2023-06-15",
+      "security_id": 1,
+      "signal_type": "long",
+      "strength": 1.0,
+      "confidence": 0.85,
+      "meta": {
+        "composite": 0.7823,
+        "ret_6m": 0.18,
+        "ret_3m": 0.12,
+        "vol": 0.21,
+        "avg_iv": 0.29,
+        "iv_rank": 42.5,
+        "put_call_oi_ratio": 0.70,
+        "options_activity": 8500.0
+      }
+    },
+    {
+      "timestamp": "2023-06-15",
+      "security_id": 2,
+      "signal_type": "long",
+      "strength": 0.89,
+      "confidence": 0.78,
+      "meta": {
+        "composite": 0.6954,
+        "ret_6m": 0.15,
+        "ret_3m": 0.08,
+        "vol": 0.25,
+        "avg_iv": 0.35,
+        "iv_rank": 65.3,
+        "put_call_oi_ratio": 0.85,
+        "options_activity": 2000.0
+      }
+    }
+  ]
+}

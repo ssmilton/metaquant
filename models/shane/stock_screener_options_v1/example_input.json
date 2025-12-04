@@ -1,0 +1,92 @@
+{
+  "mode": "backtest",
+  "model_id": "stock_screener_options_v1",
+  "run_id": "example-run-uuid",
+  "universe": [
+    {"security_id": 1},
+    {"security_id": 2}
+  ],
+  "data": {
+    "prices": [
+      {
+        "security_id": 1,
+        "dates": [
+          "2023-01-03", "2023-01-04", "2023-01-05", "..."
+        ],
+        "close": [
+          125.50, 126.30, 127.15, "..."
+        ],
+        "volume": [
+          50000000, 52000000, 48000000, "..."
+        ]
+      },
+      {
+        "security_id": 2,
+        "dates": [
+          "2023-01-03", "2023-01-04", "2023-01-05", "..."
+        ],
+        "close": [
+          88.25, 89.10, 88.90, "..."
+        ],
+        "volume": [
+          30000000, 31000000, 29000000, "..."
+        ]
+      }
+    ],
+    "options": {
+      "1": [
+        {
+          "option_id": 1001,
+          "date": "2023-06-15",
+          "bid": 2.45,
+          "ask": 2.55,
+          "last": 2.50,
+          "iv": 0.28,
+          "delta": 0.65,
+          "gamma": 0.045,
+          "theta": -0.025,
+          "vega": 0.12,
+          "open_interest": 5000,
+          "underlying_price": 165.50
+        },
+        {
+          "option_id": 1002,
+          "date": "2023-06-15",
+          "bid": 1.85,
+          "ask": 1.95,
+          "last": 1.90,
+          "iv": 0.30,
+          "delta": -0.35,
+          "gamma": 0.040,
+          "theta": -0.020,
+          "vega": 0.10,
+          "open_interest": 3500,
+          "underlying_price": 165.50
+        }
+      ],
+      "2": [
+        {
+          "option_id": 2001,
+          "date": "2023-06-15",
+          "bid": 1.20,
+          "ask": 1.30,
+          "last": 1.25,
+          "iv": 0.35,
+          "delta": 0.55,
+          "gamma": 0.050,
+          "theta": -0.030,
+          "vega": 0.15,
+          "open_interest": 2000,
+          "underlying_price": 119.75
+        }
+      ]
+    }
+  },
+  "parameters": {
+    "max_positions": 8
+  },
+  "time_range": {
+    "start": "2023-01-01",
+    "end": "2023-12-31"
+  }
+}

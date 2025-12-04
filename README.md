@@ -84,9 +84,27 @@ Models are external executables. Manifest (`model.json`) fields include `model_i
 ## CLI Usage
 - `quantfw list-models` — discover manifests under `models/`.
 - `quantfw init-db --config config/base.yaml` — create the shared market data DuckDB schema at the configured path.
-- `quantfw backtest --model-id sector_momentum_v1 --security-ids 1,2 --start-date 2020-01-01 --end-date 2020-12-31 --params '{"lookback_days":30}'` — run a backtest. Results are written to `data/<model_id>_<run_id>.duckdb`.
+- `quantfw backtest` — run a backtest. Results are written to `data/<model_id>_<run_id>.duckdb`.
 
-**Note**: Multiple backtest commands can run in parallel without conflicts. Each run reads from the shared market data database (read-only) and writes to its own results database.
+### Backtest Examples
+
+```bash
+# Using security IDs (integers)
+quantfw backtest --model-id sector_momentum_v1 --security-ids 1,2,3 \
+  --start-date 2020-01-01 --end-date 2020-12-31 --params '{"lookback_days":30}'
+
+# Using ticker symbols
+quantfw backtest --model-id sector_momentum_v1 --tickers AAPL,MSFT,GOOGL \
+  --start-date 2020-01-01 --end-date 2020-12-31 --params '{"lookback_days":30}'
+
+# Using a tickers file (one ticker per line)
+quantfw backtest --model-id sector_momentum_v1 --tickers-file my_universe.txt \
+  --start-date 2020-01-01 --end-date 2020-12-31 --params '{"lookback_days":30}'
+```
+
+**Note**: Specify exactly one of `--security-ids`, `--tickers`, or `--tickers-file`. Tickers are automatically resolved to security IDs by looking up the `securities` table.
+
+**Parallel Execution**: Multiple backtest commands can run in parallel without conflicts. Each run reads from the shared market data database (read-only) and writes to its own results database.
 
 ## Adding a New Model
 1. Create a directory under `models/<author>/<model_name>/`.
