@@ -25,6 +25,7 @@ import json
 import math
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import duckdb
@@ -36,7 +37,8 @@ import pandas as pd
 # Configuration and Constants
 # =====================================================================
 
-DB_PATH = 'data/metaquant.duckdb'
+# Database path - go up 3 levels from model dir to project root
+DB_PATH = Path(__file__).parent.parent.parent.parent / 'data' / 'metaquant.duckdb'
 
 DEFAULT_PARAMS = {
     'target_positions': 20,
@@ -588,30 +590,52 @@ def apply_sector_rotation(df: pd.DataFrame, sector_scores: Dict[str, float], par
 # Filtering
 # =====================================================================
 
-def apply_filters(df: pd.DataFrame, params: Dict) -> pd.DataFrame:
+def apply_filters(df: pd.DataFrame, params: Dict, debug_log: Optional = None) -> pd.DataFrame:
     """Apply liquidity, quality, valuation, and momentum filters."""
+
+    def log(msg):
+        if debug_log:
+            debug_log(msg)
+
+    initial_count = len(df)
+    log(f"  Initial candidates: {initial_count}")
 
     # Liquidity filters
     df = df[df['dollar_volume'] >= params.get('min_dollar_volume', 5_000_000)]
-    df = df[df['market_cap'] >= params.get('min_market_cap', 500_000_000)]
+    log(f"  After dollar_volume filter: {len(df)} (removed {initial_count - len(df)})")
 
-    # Quality filters
-    df = df[df['roe'] >= params.get('min_roe', 0.10)]
-    df = df[df['profit_margins'] >= params.get('min_profit_margin', 0.05)]
-    df = df[df['debt_to_equity'] < params.get('max_debt_to_equity', 2.0)]
+    df = df[(df['market_cap'] >= params.get('min_market_cap', 500_000_000)) | df['market_cap'].isna()]
+    log(f"  After market_cap filter: {len(df)}")
 
-    # Valuation filters
-    df = df[(df['trailing_pe'] > 0) & (df['trailing_pe'] < params.get('max_pe', 50))]
-    df = df[(df['price_to_book'] > 0) & (df['price_to_book'] < params.get('max_pb', 10))]
+    # Quality filters (allow NaN to pass through)
+    df = df[(df['roe'] >= params.get('min_roe', 0.10)) | df['roe'].isna()]
+    log(f"  After ROE filter: {len(df)}")
+
+    df = df[(df['profit_margins'] >= params.get('min_profit_margin', 0.05)) | df['profit_margins'].isna()]
+    log(f"  After profit_margins filter: {len(df)}")
+
+    df = df[(df['debt_to_equity'] < params.get('max_debt_to_equity', 2.0)) | df['debt_to_equity'].isna()]
+    log(f"  After debt_to_equity filter: {len(df)}")
+
+    # Valuation filters (allow NaN to pass through)
+    df = df[(df['trailing_pe'] > 0) & (df['trailing_pe'] < params.get('max_pe', 50)) | df['trailing_pe'].isna()]
+    log(f"  After trailing_pe filter: {len(df)}")
+
+    df = df[(df['price_to_book'] > 0) & (df['price_to_book'] < params.get('max_pb', 10)) | df['price_to_book'].isna()]
+    log(f"  After price_to_book filter: {len(df)}")
 
     # Momentum filters (allow NaN values to pass through)
     momentum_6m_min = params.get('momentum_6m_min', -0.10)
     momentum_3m_min = params.get('momentum_3m_min', -0.15)
     df = df[(df['ret_6m'] >= momentum_6m_min) | df['ret_6m'].isna()]
+    log(f"  After ret_6m filter: {len(df)}")
+
     df = df[(df['ret_3m'] >= momentum_3m_min) | df['ret_3m'].isna()]
+    log(f"  After ret_3m filter: {len(df)}")
 
     # Volatility filter
     df = df[df['volatility'] < params.get('max_volatility', 0.80)]
+    log(f"  After volatility filter: {len(df)}")
 
     return df
 
@@ -660,7 +684,7 @@ def compute_position_weights(df: pd.DataFrame, params: Dict) -> pd.DataFrame:
 
 
 def apply_sector_diversification(
-    df: pd.DataFrame, target_positions: int, params: Dict
+    df: pd.DataFrame, target_positions: int, params: Dict, debug_log=None
 ) -> pd.DataFrame:
     """Select stocks respecting dynamic sector concentration limits.
 
@@ -669,8 +693,13 @@ def apply_sector_diversification(
     - Weak sectors (score < 0.3): Limited to sector_min_tilt (e.g., 15%)
     - Average sectors (0.3-0.7): Base sector_max_pct (e.g., 35%)
     """
+    def log(msg):
+        if debug_log:
+            debug_log(msg)
+
     selected = []
     sector_weights = {}
+    log(f"  apply_sector_diversification: {len(df)} candidates, target={target_positions}")
 
     # Get dynamic sector limits
     base_max = params.get('sector_max_pct', 0.35)
@@ -682,6 +711,11 @@ def apply_sector_diversification(
     sector_limits = {}
     if enable_rotation and 'sector_score' in df.columns:
         for sector in df['sector'].unique():
+            # Handle None or 'Unknown' sectors - use base limit
+            if pd.isna(sector) or sector is None or sector == 'Unknown':
+                sector_limits[sector] = base_max
+                continue
+
             sector_score = df[df['sector'] == sector]['sector_score'].iloc[0]
 
             if sector_score >= 0.7:
@@ -698,6 +732,7 @@ def apply_sector_diversification(
         for sector in df['sector'].unique():
             sector_limits[sector] = base_max
 
+    log(f"  Sector limits: {sector_limits}")
     df_sorted = df.sort_values('composite', ascending=False)
 
     for idx, row in df_sorted.iterrows():
@@ -706,14 +741,22 @@ def apply_sector_diversification(
         current_sector_weight = sector_weights.get(sector, 0.0)
         sector_limit = sector_limits.get(sector, base_max)
 
-        # Check sector-specific limit
-        if current_sector_weight + candidate_weight <= sector_limit:
+        log(f"    Evaluating sec_id={row['security_id']}, sector={sector}, weight={candidate_weight:.4f}, current_sector_weight={current_sector_weight:.4f}, limit={sector_limit:.4f}")
+
+        # Check sector-specific limit, but allow at least target_positions to be selected
+        # This prevents empty portfolios when position weights exceed sector limits
+        if current_sector_weight + candidate_weight <= sector_limit or len(selected) < target_positions:
             selected.append(row)
             sector_weights[sector] = current_sector_weight + candidate_weight
+            log(f"      ACCEPTED - new sector weight: {sector_weights[sector]:.4f}")
 
             if len(selected) >= target_positions:
+                log(f"      Reached target positions ({target_positions})")
                 break
+        else:
+            log(f"      REJECTED - would exceed limit ({current_sector_weight + candidate_weight:.4f} > {sector_limit:.4f})")
 
+    log(f"  Selected {len(selected)} candidates")
     return pd.DataFrame(selected) if selected else pd.DataFrame()
 
 
@@ -865,15 +908,23 @@ def make_signal(row: pd.Series, params: Dict) -> Dict:
 def main() -> None:
     """Main model execution logic."""
 
-    # DEBUG: Verify model is being called
-    print("DEBUG: Model started", file=sys.stderr, flush=True)
+    # DEBUG: File-based logging
+    debug_log = Path(__file__).parent / "debug.log"
+    def log(msg: str):
+        with open(debug_log, "a") as f:
+            f.write(f"{msg}\n")
+            f.flush()
+
+    log("=" * 80)
+    log("DEBUG: Model started")
 
     # 1. Load input payload
     payload = json.load(sys.stdin)
-    print(f"DEBUG: Loaded payload with {len(payload.get('data', {}).get('prices', []))} price payloads", file=sys.stderr, flush=True)
+    log(f"DEBUG: Loaded payload with {len(payload.get('data', {}).get('prices', []))} price payloads")
     model_id = payload.get('model_id', 'value_momentum_options_v1')
     run_id = payload.get('run_id', '')
     params = {**DEFAULT_PARAMS, **(payload.get('parameters', {}) or {})}
+    log(f"DEBUG: Parameters: target_positions={params.get('target_positions')}, min_market_cap={params.get('min_market_cap')}")
 
     # 2. Extract data from payload
     prices_data = payload.get('data', {}).get('prices', [])
@@ -882,26 +933,29 @@ def main() -> None:
 
     # 3. Load fundamentals and securities metadata
     security_ids = [p['security_id'] for p in prices_data]
+    log(f"DEBUG: Loading fundamentals for {len(security_ids)} securities")
     fundamentals_df = load_fundamentals(security_ids)
+    log(f"DEBUG: Loaded {len(fundamentals_df)} fundamental records")
     securities_df = load_securities(security_ids)
+    log(f"DEBUG: Loaded {len(securities_df)} security records")
 
     # 4. Build candidates
     candidates = []
-    print(f"DEBUG: Processing {len(prices_data)} price payloads", file=sys.stderr)
+    log(f"DEBUG: Processing {len(prices_data)} price payloads")
     for price_payload in prices_data:
         sec_id = price_payload['security_id']
 
         # Build price DataFrame
         price_df = build_price_dataframe(price_payload)
         if price_df.empty:
-            print(f"DEBUG: Sec {sec_id}: Empty price_df", file=sys.stderr)
+            log(f"DEBUG: Sec {sec_id}: Empty price_df - SKIPPED")
             continue
 
-        print(f"DEBUG: Sec {sec_id}: {len(price_df)} price records", file=sys.stderr)
+        log(f"DEBUG: Sec {sec_id}: {len(price_df)} price records")
 
         # Get fundamentals (if available)
         fund_row = fundamentals_df.loc[sec_id] if sec_id in fundamentals_df.index else None
-        print(f"DEBUG: Sec {sec_id}: fundamentals={'present' if fund_row is not None else 'missing'}", file=sys.stderr)
+        log(f"DEBUG: Sec {sec_id}: fundamentals={'present' if fund_row is not None else 'missing'}")
 
         # Get options metrics
         sec_options = options_data.get(str(sec_id), [])
@@ -909,71 +963,95 @@ def main() -> None:
 
         # Get sector
         sector = securities_df.loc[sec_id, 'sector'] if sec_id in securities_df.index else None
-        print(f"DEBUG: Sec {sec_id}: sector={sector}", file=sys.stderr)
+        log(f"DEBUG: Sec {sec_id}: sector={sector}")
 
         # Build candidate
         candidate = build_candidate(sec_id, price_df, fund_row, options_metrics, sector)
         if candidate:
             candidates.append(candidate)
-            print(f"DEBUG: Sec {sec_id}: Candidate built successfully", file=sys.stderr)
+            log(f"DEBUG: Sec {sec_id}: Candidate built successfully")
         else:
-            print(f"DEBUG: Sec {sec_id}: Candidate building returned None", file=sys.stderr)
+            log(f"DEBUG: Sec {sec_id}: Candidate building returned None")
 
-    print(f"DEBUG: Total candidates built: {len(candidates)}", file=sys.stderr)
+    log(f"DEBUG: Total candidates built: {len(candidates)}")
 
     if not candidates:
         # No valid candidates, return empty signals
-        print("DEBUG: No candidates, exiting", file=sys.stderr)
+        log("DEBUG: No candidates, exiting with empty signals")
         output = {'model_id': model_id, 'run_id': run_id, 'signals': []}
         json.dump(output, sys.stdout)
         return
 
     candidates_df = pd.DataFrame(candidates)
+    log(f"DEBUG: Candidates DataFrame shape: {candidates_df.shape}")
+
+    # Log first candidate details
+    if len(candidates_df) > 0:
+        first = candidates_df.iloc[0]
+        log(f"DEBUG: First candidate values:")
+        log(f"  security_id={first['security_id']}, market_cap={first.get('market_cap', 'N/A')}, dollar_volume={first.get('dollar_volume', 'N/A')}")
+        log(f"  roe={first.get('roe', 'N/A')}, profit_margins={first.get('profit_margins', 'N/A')}, debt_to_equity={first.get('debt_to_equity', 'N/A')}")
+        log(f"  trailing_pe={first.get('trailing_pe', 'N/A')}, price_to_book={first.get('price_to_book', 'N/A')}")
+        log(f"  ret_3m={first.get('ret_3m', 'N/A')}, ret_6m={first.get('ret_6m', 'N/A')}, ret_12m={first.get('ret_12m', 'N/A')}")
+        log(f"  volatility={first.get('volatility', 'N/A')}")
 
     # 5. Apply filters
-    filtered = apply_filters(candidates_df, params)
+    log("DEBUG: Applying filters")
+    filtered = apply_filters(candidates_df, params, debug_log=log)
+    log(f"DEBUG: After filters: {len(filtered)} candidates remain")
 
     if filtered.empty:
         # All candidates filtered out
+        log("DEBUG: All candidates filtered out, exiting with empty signals")
         output = {'model_id': model_id, 'run_id': run_id, 'signals': []}
         json.dump(output, sys.stdout)
         return
 
     # 6. Compute factor scores
+    log("DEBUG: Computing factor scores")
     filtered['value_score'] = compute_value_score(filtered)
     filtered['momentum_score'] = compute_momentum_score(filtered)
     filtered['quality_score'] = compute_quality_score(filtered)
     filtered['risk_score'] = compute_risk_score(filtered)
     filtered['options_score'] = compute_options_score(filtered)
+    log(f"DEBUG: Factor scores computed: value={filtered['value_score'].iloc[0]:.3f}, momentum={filtered['momentum_score'].iloc[0]:.3f}, quality={filtered['quality_score'].iloc[0]:.3f}, risk={filtered['risk_score'].iloc[0]:.3f}, options={filtered['options_score'].iloc[0]:.3f}")
 
     # 7. Compute composite score
     filtered['composite'] = sum(
         filtered[factor] * weight for factor, weight in FACTOR_WEIGHTS.items()
     )
+    log(f"DEBUG: Composite score computed: {filtered['composite'].iloc[0]:.3f}")
 
     # 8. Select top candidates (double the target for diversification buffer)
     target_positions = params.get('target_positions', 20)
     filtered = filtered.sort_values('composite', ascending=False).head(target_positions * 2)
+    log(f"DEBUG: After selecting top {target_positions * 2}: {len(filtered)} candidates")
 
     # 8.5. Compute sector scores for rotation
     sector_scores = compute_sector_scores(filtered, params)
+    log(f"DEBUG: Sector scores: {sector_scores}")
 
     # 8.6. Apply sector rotation multipliers
     filtered = apply_sector_rotation(filtered, sector_scores, params)
+    log(f"DEBUG: After sector rotation: {len(filtered)} candidates")
 
     # 9. Compute position weights (now includes sector multiplier)
     filtered = compute_position_weights(filtered, params)
+    log(f"DEBUG: After position weighting: {len(filtered)} candidates")
 
     # 10. Apply sector diversification with dynamic limits
-    selected = apply_sector_diversification(filtered, target_positions, params)
+    selected = apply_sector_diversification(filtered, target_positions, params, debug_log=log)
+    log(f"DEBUG: After sector diversification: {len(selected)} candidates selected")
 
     if selected.empty:
         # Sector diversification eliminated all candidates
+        log("DEBUG: Sector diversification eliminated all candidates, exiting with empty signals")
         output = {'model_id': model_id, 'run_id': run_id, 'signals': []}
         json.dump(output, sys.stdout)
         return
 
     # 11. Determine options strategies
+    log("DEBUG: Determining options strategies")
     vix = get_current_vix(market_features)
     selected['options_strategy'] = selected.apply(
         lambda row: determine_options_strategy(row, vix, params), axis=1
@@ -984,15 +1062,19 @@ def main() -> None:
     selected['_max_composite'] = max_composite
 
     # 13. Generate signals
+    log(f"DEBUG: Generating signals for {len(selected)} selected securities")
     signals = [make_signal(row, params) for _, row in selected.iterrows()]
+    log(f"DEBUG: Generated {len(signals)} signals")
 
     # 14. Output
+    log(f"DEBUG: Outputting {len(signals)} signals")
     output = {
         'model_id': model_id,
         'run_id': run_id,
         'signals': signals
     }
     json.dump(output, sys.stdout)
+    log("DEBUG: Model completed successfully")
 
 
 if __name__ == '__main__':
