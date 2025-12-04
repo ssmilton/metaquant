@@ -66,13 +66,15 @@ class BacktestEngine:
         universe = [SecurityDefinition(security_id=i) for i in security_ids]
         price_payloads: List[Dict] = []
         for sid, group in prices.groupby("security_id"):
-            price_payloads.append(
-                {
-                    "security_id": int(sid),
-                    "dates": group["date"].astype(str).tolist(),
-                    "close": group["close"].tolist(),
-                }
-            )
+            payload = {
+                "security_id": int(sid),
+                "dates": group["date"].astype(str).tolist(),
+                "close": group["close"].tolist(),
+            }
+            # Include volume if available
+            if "volume" in group.columns:
+                payload["volume"] = group["volume"].tolist()
+            price_payloads.append(payload)
         model_input = ModelInput(
             mode="backtest",
             model_id=manifest.model_id,
@@ -113,11 +115,18 @@ class BacktestEngine:
         initial_capital: float = 100_000,
         transaction_cost_bps: float = 5,
         slippage_bps: float = 1,
+        lookback_days: int = 365,
         node_name: Optional[str] = None,
         node_tags: Optional[List[str]] = None,
     ) -> BacktestResult:
         run_id = str(uuid.uuid4())
-        prices = self.market_data_adapter.fetch_daily_prices(security_ids, start_date, end_date)
+
+        # Calculate fetch start date with lookback
+        start_dt = pd.to_datetime(start_date)
+        fetch_start_date = (start_dt - pd.Timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+        logger.info(f"Fetching prices from {fetch_start_date} (lookback) to {end_date} (backtest: {start_date} to {end_date})")
+        prices = self.market_data_adapter.fetch_daily_prices(security_ids, fetch_start_date, end_date)
 
         if prices.empty:
             # Get available date ranges to provide helpful error message
@@ -130,7 +139,7 @@ class BacktestEngine:
 
             error_msg = (
                 f"No price data found for security_ids={list(security_ids)} "
-                f"in date range {start_date} to {end_date}.\n"
+                f"in date range {fetch_start_date} to {end_date} (backtest: {start_date} to {end_date}, lookback: {lookback_days} days).\n"
             )
             if available_ranges:
                 error_msg += "Available data ranges for requested securities:\n"
@@ -168,15 +177,17 @@ class BacktestEngine:
             trades.append(trade.__dict__)
         trades_df = pd.DataFrame(trades)
 
+        # Calculate equity curve only for backtest period (not lookback)
         equity_records: List[Dict] = []
-        for date in sorted(prices["date"].unique()):
+        backtest_dates = prices[prices["date"] >= start_date]["date"].unique()
+        for date in sorted(backtest_dates):
             equity = portfolio.mark_to_market(date, prices)
             equity_records.append({"date": date, "equity": equity})
         equity_df = pd.DataFrame(equity_records)
         metrics = self._compute_basic_metrics(equity_df)
 
         # Create model-specific results database
-        results_db_path = self.results_db_dir / f"{manifest.model_id}_{run_id}.duckdb"
+        results_db_path = self.results_db_dir / f"{manifest.model_id}.duckdb"
         logger.info("Writing results to %s", results_db_path)
         create_model_results_schema(results_db_path)
         results_adapter = DuckDBAdapter(results_db_path, read_only=False)
@@ -214,16 +225,33 @@ class BacktestEngine:
     @staticmethod
     def _compute_basic_metrics(equity_df: pd.DataFrame) -> Dict[str, float]:
         if equity_df.empty:
-            return {"total_return": 0.0}
+            return {"total_return": 0.0, "cagr": 0.0, "sharpe": 0.0, "volatility": 0.0, "max_drawdown": 0.0, "hit_rate": 0.0}
         equity_df = equity_df.sort_values("date").reset_index(drop=True)
         equity_df["return"] = equity_df["equity"].pct_change().fillna(0.0)
+
+        # Total return
         total_return = equity_df["equity"].iloc[-1] / equity_df["equity"].iloc[0] - 1
+
+        # CAGR (Compound Annual Growth Rate)
+        days = (pd.to_datetime(equity_df["date"].iloc[-1]) - pd.to_datetime(equity_df["date"].iloc[0])).days
+        years = days / 365.25
+        cagr = ((equity_df["equity"].iloc[-1] / equity_df["equity"].iloc[0]) ** (1 / years) - 1) if years > 0 else 0.0
+
+        # Volatility and Sharpe
         volatility = equity_df["return"].std() * (252 ** 0.5)
         sharpe = (equity_df["return"].mean() * 252) / volatility if volatility else 0.0
+
+        # Max drawdown
         drawdown = (equity_df["equity"] / equity_df["equity"].cummax() - 1).min()
+
+        # Hit rate (percentage of positive return days)
+        hit_rate = (equity_df["return"] > 0).sum() / len(equity_df["return"]) if len(equity_df["return"]) > 0 else 0.0
+
         return {
             "total_return": float(total_return),
+            "cagr": float(cagr),
             "volatility": float(volatility),
             "sharpe": float(sharpe),
             "max_drawdown": float(drawdown),
+            "hit_rate": float(hit_rate),
         }
