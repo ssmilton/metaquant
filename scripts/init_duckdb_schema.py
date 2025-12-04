@@ -67,6 +67,15 @@ DDL = [
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS fred_series (
+        series_id VARCHAR,
+        date DATE,
+        value DOUBLE,
+        title VARCHAR,
+        PRIMARY KEY (series_id, date)
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS model_runs (
         run_id UUID PRIMARY KEY,
         model_id VARCHAR,
