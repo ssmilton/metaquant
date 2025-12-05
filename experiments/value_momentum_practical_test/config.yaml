@@ -1,0 +1,134 @@
+{
+  "experiment_id": "value_momentum_practical_test",
+  "description": "Practical parameter test with relaxed filters for value-momentum-options model",
+  "universe": {
+    "security_ids": null,
+    "tickers": null,
+    "tickers_file": "config/value_momentum_test_universe.txt"
+  },
+  "start_date": "2022-01-01",
+  "end_date": "2024-01-01",
+  "lookback_days": 252,
+  "models": [
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Baseline-Relaxed",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 1.0,
+        "min_roe": 0.05,
+        "max_pe": 100,
+        "max_pb": 20,
+        "max_debt_to_equity": 5.0,
+        "momentum_6m_min": -0.3,
+        "momentum_3m_min": -0.3,
+        "sector_rotation_strength": 0.3
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Moderate",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.8,
+        "min_roe": 0.08,
+        "max_pe": 75,
+        "max_pb": 15,
+        "max_debt_to_equity": 4.0,
+        "momentum_6m_min": -0.2,
+        "momentum_3m_min": -0.25,
+        "sector_rotation_strength": 0.3
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Conservative-Realistic",
+      "parameters": {
+        "target_positions": 15,
+        "min_market_cap": 5000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.6,
+        "min_roe": 0.1,
+        "max_pe": 40,
+        "max_pb": 8,
+        "max_debt_to_equity": 3.0,
+        "momentum_6m_min": 0.0,
+        "momentum_3m_min": -0.1,
+        "sector_rotation_strength": 0.2
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Growth-Focus",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 1.2,
+        "min_roe": 0.12,
+        "max_pe": 150,
+        "max_pb": 30,
+        "max_debt_to_equity": 4.0,
+        "momentum_6m_min": 0.1,
+        "momentum_3m_min": 0.0,
+        "sector_rotation_strength": 0.4
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Value-Focus",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.9,
+        "min_roe": 0.05,
+        "max_pe": 25,
+        "max_pb": 5,
+        "max_debt_to_equity": 5.0,
+        "momentum_6m_min": -0.3,
+        "momentum_3m_min": -0.4,
+        "sector_rotation_strength": 0.25
+      },
+      "node": null,
+      "node_tags": null
+    }
+  ],
+  "parameter_sweeps": [],
+  "benchmarks": [
+    {
+      "type": "buy_and_hold",
+      "ticker": "AAPL",
+      "name": "Buy & Hold AAPL"
+    },
+    {
+      "type": "equal_weight",
+      "ticker": null,
+      "name": "Equal Weight Universe"
+    }
+  ],
+  "initial_capital": 1000000.0,
+  "transaction_cost_bps": 5.0,
+  "slippage_bps": 2.0,
+  "metrics": [
+    "total_return",
+    "cagr",
+    "sharpe",
+    "volatility",
+    "max_drawdown",
+    "hit_rate"
+  ],
+  "output_dir": "experiments/value_momentum_practical_test"
+}

@@ -1,0 +1,124 @@
+# Value-Momentum-Options Model: Practical Parameter Test
+# More relaxed filters to allow proper portfolio construction
+#
+# Usage:
+#   quantfw run-experiment experiments/value_momentum_practical_test.yaml
+
+experiment_id: "value_momentum_practical_test"
+description: "Practical parameter test with relaxed filters for value-momentum-options model"
+
+# Test universe: Larger set of stocks
+universe:
+  tickers_file: "config/value_momentum_test_universe.txt"
+
+# Test period: 2 years
+start_date: "2022-01-01"
+end_date: "2024-01-01"
+lookback_days: 252
+
+# Individual model runs with practical parameter sets
+models:
+  # Baseline: Relaxed filters
+  - model_id: "value_momentum_options_v1"
+    name: "Baseline-Relaxed"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 1.0  # More relaxed
+      min_roe: 0.05  # More relaxed
+      max_pe: 100  # More relaxed
+      max_pb: 20  # More relaxed (added)
+      max_debt_to_equity: 5.0  # Much more relaxed!
+      momentum_6m_min: -0.30  # More relaxed
+      momentum_3m_min: -0.30  # More relaxed
+      sector_rotation_strength: 0.30
+
+  # Moderate: Balanced filters
+  - model_id: "value_momentum_options_v1"
+    name: "Moderate"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.80
+      min_roe: 0.08
+      max_pe: 75
+      max_pb: 15
+      max_debt_to_equity: 4.0
+      momentum_6m_min: -0.20
+      momentum_3m_min: -0.25
+      sector_rotation_strength: 0.30
+
+  # Conservative: Tighter but realistic
+  - model_id: "value_momentum_options_v1"
+    name: "Conservative-Realistic"
+    parameters:
+      target_positions: 15
+      min_market_cap: 5000000000  # Larger caps
+      min_dollar_volume: 10000000
+      max_volatility: 0.60
+      min_roe: 0.10
+      max_pe: 40
+      max_pb: 8
+      max_debt_to_equity: 3.0
+      momentum_6m_min: 0.00  # Positive momentum only
+      momentum_3m_min: -0.10
+      sector_rotation_strength: 0.20
+
+  # Growth Focus: Higher valuations OK
+  - model_id: "value_momentum_options_v1"
+    name: "Growth-Focus"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 1.20  # Growth stocks can be volatile
+      min_roe: 0.12  # Strong profitability
+      max_pe: 150  # Accept high P/E for growth
+      max_pb: 30
+      max_debt_to_equity: 4.0
+      momentum_6m_min: 0.10  # Strong momentum
+      momentum_3m_min: 0.00
+      sector_rotation_strength: 0.40
+
+  # Value Focus: Strict valuations, relaxed quality
+  - model_id: "value_momentum_options_v1"
+    name: "Value-Focus"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.90
+      min_roe: 0.05  # Relaxed quality for value
+      max_pe: 25  # Strict P/E
+      max_pb: 5  # Strict P/B
+      max_debt_to_equity: 5.0  # Relaxed leverage
+      momentum_6m_min: -0.30  # Allow negative momentum (contrarian)
+      momentum_3m_min: -0.40
+      sector_rotation_strength: 0.25
+
+# Benchmarks
+benchmarks:
+  - type: "buy_and_hold"
+    ticker: "AAPL"
+    name: "Buy & Hold AAPL"
+
+  - type: "equal_weight"
+    name: "Equal Weight Universe"
+
+# Settings
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 2
+
+# Metrics
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate
+
+output_dir: "experiments/value_momentum_practical_test"

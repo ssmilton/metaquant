@@ -1,0 +1,51 @@
+# Value-Momentum-Options Test Universe
+# Diverse set of large-cap stocks across sectors for parameter optimization
+
+# Technology
+AAPL
+MSFT
+NVDA
+GOOGL
+AMD
+ORCL
+CSCO
+IBM
+AVGO
+
+# Communication Services
+META
+NFLX
+TMUS
+
+# Consumer Cyclical
+AMZN
+TSLA
+HD
+
+# Consumer Defensive
+WMT
+COST
+PG
+KO
+
+# Healthcare
+LLY
+JNJ
+ABBV
+UNH
+AZN
+
+# Financial Services
+BRK-B
+JPM
+V
+MA
+BAC
+WFC
+
+# Energy
+XOM
+CVX
+
+# Industrials
+GE

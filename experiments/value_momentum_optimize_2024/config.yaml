@@ -1,0 +1,161 @@
+{
+  "experiment_id": "value_momentum_optimize_2024",
+  "description": "Optimize value-momentum-options model parameters for risk-adjusted returns",
+  "universe": {
+    "security_ids": null,
+    "tickers": null,
+    "tickers_file": "config/value_momentum_test_universe.txt"
+  },
+  "start_date": "2021-01-01",
+  "end_date": "2024-01-01",
+  "lookback_days": 365,
+  "models": [],
+  "parameter_sweeps": [
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000
+      },
+      "sweep_parameters": {
+        "target_positions": [
+          10,
+          15,
+          20,
+          25,
+          30
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "target_positions": 20,
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000
+      },
+      "sweep_parameters": {
+        "max_volatility": [
+          0.5,
+          0.6,
+          0.7,
+          0.8
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "target_positions": 20,
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.7
+      },
+      "sweep_parameters": {
+        "min_roe": [
+          0.05,
+          0.08,
+          0.1,
+          0.12,
+          0.15
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "target_positions": 20,
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.7,
+        "min_roe": 0.1
+      },
+      "sweep_parameters": {
+        "max_pe": [
+          30,
+          40,
+          50,
+          75,
+          100
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "target_positions": 20,
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.7,
+        "min_roe": 0.1,
+        "max_pe": 50
+      },
+      "sweep_parameters": {
+        "momentum_6m_min": [
+          -0.2,
+          -0.1,
+          0.0,
+          0.05,
+          0.1
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "base_parameters": {
+        "target_positions": 20,
+        "min_market_cap": 10000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.7,
+        "min_roe": 0.1,
+        "max_pe": 50,
+        "momentum_6m_min": -0.1
+      },
+      "sweep_parameters": {
+        "sector_rotation_strength": [
+          0.0,
+          0.15,
+          0.3,
+          0.45,
+          0.6
+        ]
+      },
+      "node": null,
+      "node_tags": null
+    }
+  ],
+  "benchmarks": [
+    {
+      "type": "buy_and_hold",
+      "ticker": "AAPL",
+      "name": "Buy & Hold AAPL"
+    },
+    {
+      "type": "equal_weight",
+      "ticker": null,
+      "name": "Equal Weight Universe"
+    }
+  ],
+  "initial_capital": 1000000.0,
+  "transaction_cost_bps": 5.0,
+  "slippage_bps": 2.0,
+  "metrics": [
+    "total_return",
+    "cagr",
+    "sharpe",
+    "volatility",
+    "max_drawdown",
+    "hit_rate"
+  ],
+  "output_dir": "experiments/value_momentum_optimize_2024"
+}

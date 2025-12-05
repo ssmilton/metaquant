@@ -1,0 +1,126 @@
+{
+  "experiment_id": "value_momentum_quick_test",
+  "description": "Quick test of key parameters for value-momentum-options model",
+  "universe": {
+    "security_ids": null,
+    "tickers": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "GOOGL",
+      "META",
+      "AMZN"
+    ],
+    "tickers_file": null
+  },
+  "start_date": "2022-01-01",
+  "end_date": "2024-01-01",
+  "lookback_days": 252,
+  "models": [
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Baseline",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.7,
+        "min_roe": 0.1,
+        "max_pe": 50,
+        "momentum_6m_min": -0.1,
+        "sector_rotation_strength": 0.3
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Conservative",
+      "parameters": {
+        "target_positions": 15,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.5,
+        "min_roe": 0.12,
+        "max_pe": 30,
+        "momentum_6m_min": 0.0,
+        "sector_rotation_strength": 0.15
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Aggressive",
+      "parameters": {
+        "target_positions": 25,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.8,
+        "min_roe": 0.05,
+        "max_pe": 75,
+        "momentum_6m_min": -0.2,
+        "sector_rotation_strength": 0.45
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Quality Focus",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.6,
+        "min_roe": 0.15,
+        "max_pe": 40,
+        "momentum_6m_min": -0.05,
+        "sector_rotation_strength": 0.2
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Momentum Focus",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.7,
+        "min_roe": 0.08,
+        "max_pe": 60,
+        "momentum_6m_min": 0.05,
+        "sector_rotation_strength": 0.45
+      },
+      "node": null,
+      "node_tags": null
+    }
+  ],
+  "parameter_sweeps": [],
+  "benchmarks": [
+    {
+      "type": "buy_and_hold",
+      "ticker": "AAPL",
+      "name": "Buy & Hold AAPL"
+    },
+    {
+      "type": "equal_weight",
+      "ticker": null,
+      "name": "Equal Weight"
+    }
+  ],
+  "initial_capital": 1000000.0,
+  "transaction_cost_bps": 5.0,
+  "slippage_bps": 2.0,
+  "metrics": [
+    "total_return",
+    "cagr",
+    "sharpe",
+    "volatility",
+    "max_drawdown",
+    "hit_rate"
+  ],
+  "output_dir": "experiments/value_momentum_quick_test"
+}

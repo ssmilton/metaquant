@@ -1,0 +1,115 @@
+# Value-Momentum-Options Model: Quick Parameter Test
+# Smaller, faster experiment for initial parameter testing
+#
+# Usage:
+#   quantfw run-experiment experiments/value_momentum_quick_test.yaml
+
+experiment_id: "value_momentum_quick_test"
+description: "Quick test of key parameters for value-momentum-options model"
+
+# Test universe: Top tech stocks
+universe:
+  tickers:
+    - AAPL
+    - MSFT
+    - NVDA
+    - GOOGL
+    - META
+    - AMZN
+
+# Shorter test period: 2 years
+start_date: "2022-01-01"
+end_date: "2024-01-01"
+lookback_days: 252  # 1 year lookback
+
+# Individual model runs with different parameter sets
+models:
+  # Baseline: Default parameters
+  - model_id: "value_momentum_options_v1"
+    name: "Baseline"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000  # 1B for faster execution
+      min_dollar_volume: 5000000
+      max_volatility: 0.70
+      min_roe: 0.10
+      max_pe: 50
+      momentum_6m_min: -0.10
+      sector_rotation_strength: 0.30
+
+  # Conservative: Lower risk
+  - model_id: "value_momentum_options_v1"
+    name: "Conservative"
+    parameters:
+      target_positions: 15
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.50  # Lower volatility tolerance
+      min_roe: 0.12  # Higher quality requirement
+      max_pe: 30  # Stricter valuation
+      momentum_6m_min: 0.00  # Positive momentum only
+      sector_rotation_strength: 0.15
+
+  # Aggressive: Higher risk/return
+  - model_id: "value_momentum_options_v1"
+    name: "Aggressive"
+    parameters:
+      target_positions: 25
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.80  # Higher volatility tolerance
+      min_roe: 0.05  # Looser quality requirement
+      max_pe: 75  # Looser valuation
+      momentum_6m_min: -0.20  # Allow negative momentum
+      sector_rotation_strength: 0.45
+
+  # Quality Focus
+  - model_id: "value_momentum_options_v1"
+    name: "Quality Focus"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.60
+      min_roe: 0.15  # High ROE requirement
+      max_pe: 40
+      momentum_6m_min: -0.05
+      sector_rotation_strength: 0.20
+
+  # Momentum Focus
+  - model_id: "value_momentum_options_v1"
+    name: "Momentum Focus"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.70
+      min_roe: 0.08
+      max_pe: 60
+      momentum_6m_min: 0.05  # Strong positive momentum
+      sector_rotation_strength: 0.45  # Strong sector rotation
+
+# Benchmarks
+benchmarks:
+  - type: "buy_and_hold"
+    ticker: "AAPL"
+    name: "Buy & Hold AAPL"
+
+  - type: "equal_weight"
+    name: "Equal Weight"
+
+# Settings
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 2
+
+# Metrics
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate
+
+output_dir: "experiments/value_momentum_quick_test"
