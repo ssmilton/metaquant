@@ -1,0 +1,159 @@
+{
+  "experiment_id": "value_momentum_5year_extended",
+  "description": "5-year backtest of optimized value-momentum-options configurations with 150-stock universe",
+  "universe": {
+    "security_ids": null,
+    "tickers": null,
+    "tickers_file": "config/value_momentum_extended_universe.txt"
+  },
+  "start_date": "2019-01-01",
+  "end_date": "2024-01-01",
+  "lookback_days": 365,
+  "models": [
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Conservative-5Y",
+      "parameters": {
+        "target_positions": 15,
+        "min_market_cap": 5000000000,
+        "min_dollar_volume": 10000000,
+        "max_volatility": 0.6,
+        "min_roe": 0.12,
+        "max_pe": 35,
+        "max_pb": 8,
+        "max_debt_to_equity": 10.0,
+        "min_profit_margin": 0.05,
+        "momentum_6m_min": 0.0,
+        "momentum_3m_min": -0.1,
+        "sector_max_pct": 0.3,
+        "position_weight_cap": 0.1,
+        "stop_loss_pct": -0.15,
+        "sector_rotation_strength": 0.2
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Moderate-5Y",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 2000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.75,
+        "min_roe": 0.08,
+        "max_pe": 60,
+        "max_pb": 12,
+        "max_debt_to_equity": 15.0,
+        "min_profit_margin": 0.05,
+        "momentum_6m_min": -0.15,
+        "momentum_3m_min": -0.2,
+        "sector_max_pct": 0.35,
+        "position_weight_cap": 0.1,
+        "stop_loss_pct": -0.2,
+        "sector_rotation_strength": 0.3
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Aggressive-5Y",
+      "parameters": {
+        "target_positions": 25,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 3000000,
+        "max_volatility": 1.2,
+        "min_roe": 0.05,
+        "max_pe": 100,
+        "max_pb": 25,
+        "max_debt_to_equity": 20.0,
+        "min_profit_margin": 0.03,
+        "momentum_6m_min": -0.3,
+        "momentum_3m_min": -0.4,
+        "sector_max_pct": 0.4,
+        "position_weight_cap": 0.12,
+        "stop_loss_pct": -0.25,
+        "sector_rotation_strength": 0.45
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Growth-5Y",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 1.5,
+        "min_roe": 0.15,
+        "max_pe": 200,
+        "max_pb": 40,
+        "max_debt_to_equity": 12.0,
+        "min_profit_margin": 0.08,
+        "momentum_6m_min": 0.15,
+        "momentum_3m_min": 0.05,
+        "sector_max_pct": 0.35,
+        "position_weight_cap": 0.1,
+        "stop_loss_pct": -0.22,
+        "sector_rotation_strength": 0.4
+      },
+      "node": null,
+      "node_tags": null
+    },
+    {
+      "model_id": "value_momentum_options_v1",
+      "name": "Value-5Y",
+      "parameters": {
+        "target_positions": 20,
+        "min_market_cap": 1000000000,
+        "min_dollar_volume": 5000000,
+        "max_volatility": 0.9,
+        "min_roe": 0.05,
+        "max_pe": 20,
+        "max_pb": 4,
+        "max_debt_to_equity": 25.0,
+        "min_profit_margin": 0.03,
+        "momentum_6m_min": -0.4,
+        "momentum_3m_min": -0.5,
+        "sector_max_pct": 0.35,
+        "position_weight_cap": 0.1,
+        "stop_loss_pct": -0.25,
+        "sector_rotation_strength": 0.25
+      },
+      "node": null,
+      "node_tags": null
+    }
+  ],
+  "parameter_sweeps": [],
+  "benchmarks": [
+    {
+      "type": "buy_and_hold",
+      "ticker": "AAPL",
+      "name": "Buy & Hold AAPL"
+    },
+    {
+      "type": "buy_and_hold",
+      "ticker": "NVDA",
+      "name": "Buy & Hold NVDA"
+    },
+    {
+      "type": "equal_weight",
+      "ticker": null,
+      "name": "Equal Weight Universe"
+    }
+  ],
+  "initial_capital": 1000000.0,
+  "transaction_cost_bps": 5.0,
+  "slippage_bps": 2.0,
+  "metrics": [
+    "total_return",
+    "cagr",
+    "sharpe",
+    "volatility",
+    "max_drawdown",
+    "hit_rate"
+  ],
+  "output_dir": "experiments/value_momentum_5year_extended"
+}

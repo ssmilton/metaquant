@@ -1,0 +1,150 @@
+# Value-Momentum-Options Model: 5-Year Extended Universe Backtest
+# Tests optimized configurations over longer period with larger universe
+#
+# Usage:
+#   quantfw run-experiment experiments/value_momentum_5year_extended.yaml
+
+experiment_id: "value_momentum_5year_extended"
+description: "5-year backtest of optimized value-momentum-options configurations with 150-stock universe"
+
+# Extended universe: 150 stocks with complete fundamental data
+universe:
+  tickers_file: "config/value_momentum_extended_universe.txt"
+
+# Test period: 5 years to capture multiple market cycles
+# 2019-2024 includes: pre-COVID, COVID crash, recovery, inflation surge, and normalization
+start_date: "2019-01-01"
+end_date: "2024-01-01"
+lookback_days: 365
+
+# Optimized configurations from previous testing
+models:
+  # Conservative: Low risk, quality focus
+  - model_id: "value_momentum_options_v1"
+    name: "Conservative-5Y"
+    parameters:
+      target_positions: 15
+      min_market_cap: 5000000000  # $5B+ mega caps
+      min_dollar_volume: 10000000
+      max_volatility: 0.60
+      min_roe: 0.12
+      max_pe: 35
+      max_pb: 8
+      max_debt_to_equity: 10.0  # Optimized from 2.0
+      min_profit_margin: 0.05
+      momentum_6m_min: 0.00
+      momentum_3m_min: -0.10
+      sector_max_pct: 0.30
+      position_weight_cap: 0.10
+      stop_loss_pct: -0.15
+      sector_rotation_strength: 0.20
+
+  # Moderate: Balanced risk/return
+  - model_id: "value_momentum_options_v1"
+    name: "Moderate-5Y"
+    parameters:
+      target_positions: 20
+      min_market_cap: 2000000000  # $2B+
+      min_dollar_volume: 5000000
+      max_volatility: 0.75
+      min_roe: 0.08
+      max_pe: 60
+      max_pb: 12
+      max_debt_to_equity: 15.0  # Optimized from 2.0
+      min_profit_margin: 0.05
+      momentum_6m_min: -0.15
+      momentum_3m_min: -0.20
+      sector_max_pct: 0.35
+      position_weight_cap: 0.10
+      stop_loss_pct: -0.20
+      sector_rotation_strength: 0.30
+
+  # Aggressive: Higher risk/return
+  - model_id: "value_momentum_options_v1"
+    name: "Aggressive-5Y"
+    parameters:
+      target_positions: 25
+      min_market_cap: 1000000000  # $1B+
+      min_dollar_volume: 3000000
+      max_volatility: 1.20
+      min_roe: 0.05
+      max_pe: 100
+      max_pb: 25
+      max_debt_to_equity: 20.0  # Optimized from 2.0
+      min_profit_margin: 0.03
+      momentum_6m_min: -0.30
+      momentum_3m_min: -0.40
+      sector_max_pct: 0.40
+      position_weight_cap: 0.12
+      stop_loss_pct: -0.25
+      sector_rotation_strength: 0.45
+
+  # Growth Focus: High growth, high momentum
+  - model_id: "value_momentum_options_v1"
+    name: "Growth-5Y"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 1.50  # Growth stocks are volatile
+      min_roe: 0.15  # Strong profitability required
+      max_pe: 200  # Accept high valuations
+      max_pb: 40
+      max_debt_to_equity: 12.0  # Optimized from 2.0
+      min_profit_margin: 0.08
+      momentum_6m_min: 0.15  # Strong positive momentum
+      momentum_3m_min: 0.05
+      sector_max_pct: 0.35
+      position_weight_cap: 0.10
+      stop_loss_pct: -0.22
+      sector_rotation_strength: 0.40
+
+  # Value/Contrarian: Deep value, relaxed quality
+  - model_id: "value_momentum_options_v1"
+    name: "Value-5Y"
+    parameters:
+      target_positions: 20
+      min_market_cap: 1000000000
+      min_dollar_volume: 5000000
+      max_volatility: 0.90
+      min_roe: 0.05  # Relaxed for value
+      max_pe: 20  # Strict valuation
+      max_pb: 4
+      max_debt_to_equity: 25.0  # Very relaxed - value stocks often leveraged
+      min_profit_margin: 0.03
+      momentum_6m_min: -0.40  # Deep value/contrarian
+      momentum_3m_min: -0.50
+      sector_max_pct: 0.35
+      position_weight_cap: 0.10
+      stop_loss_pct: -0.25
+      sector_rotation_strength: 0.25
+
+# Benchmarks for comparison
+benchmarks:
+  - type: "buy_and_hold"
+    ticker: "AAPL"
+    name: "Buy & Hold AAPL"
+
+  - type: "buy_and_hold"
+    ticker: "NVDA"
+    name: "Buy & Hold NVDA"
+
+  - type: "equal_weight"
+    name: "Equal Weight Universe"
+
+# Settings
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 2
+
+# Metrics to evaluate
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate
+
+# Output
+output_dir: "experiments/value_momentum_5year_extended"

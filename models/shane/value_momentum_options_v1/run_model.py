@@ -599,43 +599,66 @@ def apply_filters(df: pd.DataFrame, params: Dict, debug_log: Optional = None) ->
 
     initial_count = len(df)
     log(f"  Initial candidates: {initial_count}")
+    filter_counts = [('initial', initial_count)]
 
     # Liquidity filters
+    prev = len(df)
     df = df[df['dollar_volume'] >= params.get('min_dollar_volume', 5_000_000)]
-    log(f"  After dollar_volume filter: {len(df)} (removed {initial_count - len(df)})")
+    filter_counts.append(('dollar_volume', len(df)))
+    log(f"  After dollar_volume filter: {len(df)} (removed {prev - len(df)})")
 
+    prev = len(df)
     df = df[(df['market_cap'] >= params.get('min_market_cap', 500_000_000)) | df['market_cap'].isna()]
-    log(f"  After market_cap filter: {len(df)}")
+    filter_counts.append(('market_cap', len(df)))
+    log(f"  After market_cap filter: {len(df)} (removed {prev - len(df)})")
 
     # Quality filters (allow NaN to pass through)
+    prev = len(df)
     df = df[(df['roe'] >= params.get('min_roe', 0.10)) | df['roe'].isna()]
-    log(f"  After ROE filter: {len(df)}")
+    filter_counts.append(('roe', len(df)))
+    log(f"  After ROE filter: {len(df)} (removed {prev - len(df)})")
 
+    prev = len(df)
     df = df[(df['profit_margins'] >= params.get('min_profit_margin', 0.05)) | df['profit_margins'].isna()]
-    log(f"  After profit_margins filter: {len(df)}")
+    filter_counts.append(('profit_margins', len(df)))
+    log(f"  After profit_margins filter: {len(df)} (removed {prev - len(df)})")
 
+    prev = len(df)
     df = df[(df['debt_to_equity'] < params.get('max_debt_to_equity', 2.0)) | df['debt_to_equity'].isna()]
-    log(f"  After debt_to_equity filter: {len(df)}")
+    filter_counts.append(('debt_to_equity', len(df)))
+    log(f"  After debt_to_equity filter: {len(df)} (removed {prev - len(df)})")
 
     # Valuation filters (allow NaN to pass through)
+    prev = len(df)
     df = df[(df['trailing_pe'] > 0) & (df['trailing_pe'] < params.get('max_pe', 50)) | df['trailing_pe'].isna()]
-    log(f"  After trailing_pe filter: {len(df)}")
+    filter_counts.append(('trailing_pe', len(df)))
+    log(f"  After trailing_pe filter: {len(df)} (removed {prev - len(df)})")
 
+    prev = len(df)
     df = df[(df['price_to_book'] > 0) & (df['price_to_book'] < params.get('max_pb', 10)) | df['price_to_book'].isna()]
-    log(f"  After price_to_book filter: {len(df)}")
+    filter_counts.append(('price_to_book', len(df)))
+    log(f"  After price_to_book filter: {len(df)} (removed {prev - len(df)})")
 
     # Momentum filters (allow NaN values to pass through)
     momentum_6m_min = params.get('momentum_6m_min', -0.10)
     momentum_3m_min = params.get('momentum_3m_min', -0.15)
+    prev = len(df)
     df = df[(df['ret_6m'] >= momentum_6m_min) | df['ret_6m'].isna()]
-    log(f"  After ret_6m filter: {len(df)}")
+    filter_counts.append(('ret_6m', len(df)))
+    log(f"  After ret_6m filter: {len(df)} (removed {prev - len(df)})")
 
+    prev = len(df)
     df = df[(df['ret_3m'] >= momentum_3m_min) | df['ret_3m'].isna()]
-    log(f"  After ret_3m filter: {len(df)}")
+    filter_counts.append(('ret_3m', len(df)))
+    log(f"  After ret_3m filter: {len(df)} (removed {prev - len(df)})")
 
     # Volatility filter
+    prev = len(df)
     df = df[df['volatility'] < params.get('max_volatility', 0.80)]
-    log(f"  After volatility filter: {len(df)}")
+    filter_counts.append(('volatility', len(df)))
+    log(f"  After volatility filter: {len(df)} (removed {prev - len(df)})")
+
+    log("  Filter progression: " + " -> ".join([f"{name}:{count}" for name, count in filter_counts]))
 
     return df
 
@@ -1043,6 +1066,27 @@ def main() -> None:
     selected = apply_sector_diversification(filtered, target_positions, params, debug_log=log)
     log(f"DEBUG: After sector diversification: {len(selected)} candidates selected")
 
+    # Portfolio size vs target + position sizing diagnostics
+    actual_positions = len(selected)
+    shortfall = max(0, target_positions - actual_positions)
+    log(f"DEBUG: Portfolio size check: target={target_positions}, selected={actual_positions}, shortfall={shortfall}")
+
+    if not selected.empty:
+        weights = selected['position_weight']
+        log(
+            "DEBUG: Position weight stats: "
+            f"min={weights.min():.4f}, max={weights.max():.4f}, "
+            f"mean={weights.mean():.4f}, sum={weights.sum():.4f}"
+        )
+
+        top_weights = ", ".join(
+            f"{int(row.security_id)}@{row.position_weight:.4f}"
+            for _, row in selected.sort_values('position_weight', ascending=False).head(10).iterrows()
+        )
+        log(f"DEBUG: Top position weights (sec_id@weight): {top_weights}")
+    else:
+        log("DEBUG: No positions selected to size; skipping weight diagnostics")
+
     if selected.empty:
         # Sector diversification eliminated all candidates
         log("DEBUG: Sector diversification eliminated all candidates, exiting with empty signals")
@@ -1060,6 +1104,43 @@ def main() -> None:
     # 12. Store max composite for strength calculation
     max_composite = selected['composite'].max()
     selected['_max_composite'] = max_composite
+
+    # 12.5 Trade frequency vs prior holdings (if provided)
+    prior_positions = (
+        payload.get('current_positions')
+        or payload.get('existing_positions')
+        or payload.get('positions')
+    )
+
+    if not prior_positions and isinstance(payload.get('portfolio'), dict):
+        prior_positions = payload['portfolio'].get('positions')
+
+    prior_ids = set()
+    if isinstance(prior_positions, list):
+        for pos in prior_positions:
+            sid = None
+            if isinstance(pos, dict):
+                sid = pos.get('security_id') or pos.get('id')
+            else:
+                sid = pos
+
+            try:
+                if sid is not None:
+                    prior_ids.add(int(sid))
+            except (TypeError, ValueError):
+                continue
+
+    if prior_ids:
+        new_ids = set(selected['security_id'].astype(int))
+        buys = new_ids - prior_ids
+        sells = prior_ids - new_ids
+        holds = prior_ids & new_ids
+        log(
+            f"DEBUG: Trade frequency vs prior: prev={len(prior_ids)}, "
+            f"holds={len(holds)}, buys={len(buys)}, sells={len(sells)}"
+        )
+    else:
+        log("DEBUG: Trade frequency: no prior positions provided; logging new selection count only")
 
     # 13. Generate signals
     log(f"DEBUG: Generating signals for {len(selected)} selected securities")
