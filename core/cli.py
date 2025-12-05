@@ -7,14 +7,18 @@ from typing import Optional
 
 import typer
 from rich import print
+from rich.table import Table
+from rich.console import Console
 
 from core.backtest.engine import BacktestEngine
 from core.config import load_app_config
 from core.data_access.duckdb_adapter import DuckDBAdapter
 from core.registry.discovery import ModelRegistry
 from core.evaluation import reports
+from core.experiments import ExperimentConfig, ExperimentEngine, ExperimentComparison
 
 app = typer.Typer(help="MetaQuant CLI")
+console = Console()
 
 
 @app.command()
@@ -170,6 +174,181 @@ def backtest(
         summary = reports.summarize_run(result.run_id, result.equity_curve)
 
     print(json.dumps(summary, indent=2))
+
+
+@app.command()
+def run_experiment(
+    config_path: Path = typer.Argument(..., help="Path to experiment YAML config"),
+    app_config_path: str = typer.Option("config/base.yaml", help="Path to application config"),
+) -> None:
+    """Run a complete experiment from a YAML configuration file.
+
+    Example:
+        quantfw run-experiment experiments/momentum_sweep.yaml
+    """
+    if not config_path.exists():
+        print(f"[red]Error:[/red] Config file not found: {config_path}")
+        raise typer.Exit(1)
+
+    # Load configurations
+    app_config = load_app_config(app_config_path)
+    experiment_config = ExperimentConfig.from_yaml(config_path)
+
+    print(f"[bold]Experiment:[/bold] {experiment_config.experiment_id}")
+    print(f"[cyan]{experiment_config.description}[/cyan]")
+    print()
+
+    # Create engine and run experiment
+    adapter = DuckDBAdapter(app_config.storage.duckdb_path, read_only=True)
+    engine = ExperimentEngine(app_config, adapter)
+
+    try:
+        result = engine.run_experiment(experiment_config)
+
+        print()
+        print(f"[green]✓[/green] Experiment complete!")
+        print(f"[cyan]Results saved to:[/cyan] {result.output_dir}")
+        print()
+
+        # Display comparison table
+        print("[bold]Performance Comparison:[/bold]")
+        _display_comparison_table(result.comparison_df)
+
+    except Exception as e:
+        print(f"[red]Error running experiment:[/red] {e}")
+        raise typer.Exit(1)
+    finally:
+        adapter.close()
+
+
+@app.command()
+def show_experiment(
+    experiment_dir: Path = typer.Argument(..., help="Path to experiment output directory"),
+    metric: str = typer.Option("sharpe", help="Metric to sort by"),
+    top_n: Optional[int] = typer.Option(None, help="Show only top N models"),
+) -> None:
+    """Display results from a completed experiment.
+
+    Example:
+        quantfw show-experiment experiments/momentum_sweep
+        quantfw show-experiment experiments/momentum_sweep --metric cagr --top-n 5
+    """
+    if not experiment_dir.exists():
+        print(f"[red]Error:[/red] Experiment directory not found: {experiment_dir}")
+        raise typer.Exit(1)
+
+    try:
+        comparison_df = ExperimentComparison.load_comparison(experiment_dir)
+
+        print(f"[bold]Experiment Results:[/bold] {experiment_dir.name}")
+        print()
+
+        # Optionally filter to top N
+        if top_n:
+            comparison_df = ExperimentComparison.get_top_n(comparison_df, metric, n=top_n)
+            print(f"[cyan]Showing top {top_n} by {metric}[/cyan]")
+        else:
+            comparison_df = ExperimentComparison.rank_by_metric(comparison_df, metric)
+
+        _display_comparison_table(comparison_df)
+
+    except Exception as e:
+        print(f"[red]Error loading experiment:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def compare_experiments(
+    experiment_dirs: list[Path] = typer.Argument(..., help="Paths to experiment output directories"),
+    metric: str = typer.Option("sharpe", help="Metric to compare"),
+) -> None:
+    """Compare results across multiple experiments.
+
+    Example:
+        quantfw compare-experiments experiments/exp1 experiments/exp2 experiments/exp3
+    """
+    all_results = []
+
+    for exp_dir in experiment_dirs:
+        if not exp_dir.exists():
+            print(f"[yellow]Warning:[/yellow] Experiment directory not found: {exp_dir}")
+            continue
+
+        try:
+            comparison_df = ExperimentComparison.load_comparison(exp_dir)
+            comparison_df["experiment"] = exp_dir.name
+            all_results.append(comparison_df)
+        except Exception as e:
+            print(f"[yellow]Warning:[/yellow] Could not load {exp_dir}: {e}")
+
+    if not all_results:
+        print("[red]Error:[/red] No valid experiments found")
+        raise typer.Exit(1)
+
+    # Combine all results
+    import pandas as pd
+    combined = pd.concat(all_results, ignore_index=True)
+
+    print("[bold]Cross-Experiment Comparison[/bold]")
+    print(f"[cyan]Sorted by {metric}[/cyan]")
+    print()
+
+    # Sort by metric
+    combined = combined.sort_values(metric, ascending=False, na_position="last")
+
+    _display_comparison_table(combined)
+
+
+@app.command()
+def experiment_report(
+    experiment_dir: Path = typer.Argument(..., help="Path to experiment output directory"),
+    output_file: Optional[Path] = typer.Option(None, help="Save report to file"),
+) -> None:
+    """Generate a detailed performance report for an experiment.
+
+    Example:
+        quantfw experiment-report experiments/momentum_sweep
+        quantfw experiment-report experiments/momentum_sweep --output-file report.txt
+    """
+    if not experiment_dir.exists():
+        print(f"[red]Error:[/red] Experiment directory not found: {experiment_dir}")
+        raise typer.Exit(1)
+
+    try:
+        comparison_df = ExperimentComparison.load_comparison(experiment_dir)
+
+        # Generate report
+        output_path = output_file or experiment_dir / "performance_report.txt"
+        report = ExperimentComparison.create_performance_report(comparison_df, output_path)
+
+        print(report)
+
+        if output_file:
+            print()
+            print(f"[green]✓[/green] Report saved to: {output_path}")
+
+    except Exception as e:
+        print(f"[red]Error generating report:[/red] {e}")
+        raise typer.Exit(1)
+
+
+def _display_comparison_table(df):
+    """Helper to display comparison DataFrame as a rich table."""
+    if df.empty:
+        print("[yellow]No results to display[/yellow]")
+        return
+
+    table = Table(show_header=True, header_style="bold magenta")
+
+    # Add columns
+    for col in df.columns:
+        table.add_column(col)
+
+    # Add rows
+    for _, row in df.iterrows():
+        table.add_row(*[str(val) for val in row])
+
+    console.print(table)
 
 
 if __name__ == "__main__":

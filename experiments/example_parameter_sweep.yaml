@@ -1,0 +1,57 @@
+# Example: Parameter Sweep
+# This experiment systematically tests different parameter values for a single model.
+#
+# Usage:
+#   quantfw run-experiment experiments/example_parameter_sweep.yaml
+
+experiment_id: "momentum_lookback_sweep"
+description: "Sweep lookback period for sector momentum model"
+
+# Universe: Larger tech universe
+universe:
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - META
+    - NVDA
+    - TSLA
+    - NFLX
+
+# Time period
+start_date: "2020-01-01"
+end_date: "2023-12-31"
+lookback_days: 365
+
+# Parameter sweep configuration
+parameter_sweeps:
+  - model_id: "sector_momentum_v1"
+    base_parameters:
+      # Add any shared parameters here
+      {}
+    sweep_parameters:
+      # Test different lookback periods
+      lookback_days: [10, 20, 30, 45, 60, 90, 120]
+
+# Benchmarks
+benchmarks:
+  - type: "buy_and_hold"
+    ticker: "AAPL"
+    name: "AAPL Buy & Hold"
+
+  - type: "equal_weight"
+    name: "Equal Weight Portfolio"
+
+# Settings
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 1
+
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate

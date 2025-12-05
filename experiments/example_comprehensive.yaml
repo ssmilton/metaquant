@@ -1,0 +1,85 @@
+# Example: Comprehensive Experiment
+# This experiment demonstrates all experiment features:
+# - Multiple individual model runs
+# - Parameter sweeps
+# - Multiple benchmarks
+# - Custom settings
+#
+# Usage:
+#   quantfw run-experiment experiments/example_comprehensive.yaml
+
+experiment_id: "comprehensive_strategy_evaluation"
+description: "Comprehensive evaluation of momentum strategies with parameter optimization"
+
+# Universe: Use a tickers file for larger universes
+# Create a file at config/sp500_tickers.txt with one ticker per line
+universe:
+  tickers_file: "config/sp500_tickers.txt"
+  # Alternative: Use explicit tickers list
+  # tickers:
+  #   - AAPL
+  #   - MSFT
+  #   - ...
+
+# Time period: 4 years of backtesting
+start_date: "2020-01-01"
+end_date: "2023-12-31"
+lookback_days: 365
+
+# Individual model runs with specific configurations
+models:
+  - model_id: "sector_momentum_v1"
+    name: "Momentum Conservative"
+    parameters:
+      lookback_days: 60
+      threshold: 0.05
+
+  - model_id: "sector_momentum_v1"
+    name: "Momentum Aggressive"
+    parameters:
+      lookback_days: 20
+      threshold: 0.02
+
+# Parameter sweeps for optimization
+parameter_sweeps:
+  # Sweep 1: Optimize lookback period
+  - model_id: "sector_momentum_v1"
+    base_parameters:
+      threshold: 0.03
+    sweep_parameters:
+      lookback_days: [10, 20, 30, 60, 90]
+
+  # You can add more sweeps for other models
+  # - model_id: "mean_reversion_v1"
+  #   base_parameters:
+  #     window: 20
+  #   sweep_parameters:
+  #     z_score_threshold: [1.5, 2.0, 2.5, 3.0]
+
+# Multiple benchmarks for comparison
+benchmarks:
+  # Buy and hold a specific stock
+  - type: "buy_and_hold"
+    ticker: "SPY"
+    name: "S&P 500 (SPY)"
+
+  # Equal weight portfolio of all securities in universe
+  - type: "equal_weight"
+    name: "Equal Weight Universe"
+
+# Execution settings
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 1
+
+# Metrics to evaluate
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate
+
+# Custom output directory
+output_dir: "experiments/comprehensive_strategy_evaluation"
