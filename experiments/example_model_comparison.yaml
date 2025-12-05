@@ -1,0 +1,60 @@
+# Example: Compare Multiple Models
+# This experiment compares different models on the same universe and time period.
+#
+# Usage:
+#   quantfw run-experiment experiments/example_model_comparison.yaml
+
+experiment_id: "model_comparison_2024"
+description: "Compare sector momentum vs other strategies on tech stocks"
+
+# Universe: Test on a few tech stocks
+universe:
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - META
+
+# Time period
+start_date: "2020-01-01"
+end_date: "2023-12-31"
+lookback_days: 365
+
+# Models to compare
+models:
+  - model_id: "sector_momentum_v1"
+    name: "Sector Momentum (30d)"
+    parameters:
+      lookback_days: 30
+
+  - model_id: "sector_momentum_v1"
+    name: "Sector Momentum (60d)"
+    parameters:
+      lookback_days: 60
+
+# Benchmarks for comparison
+benchmarks:
+  - type: "buy_and_hold"
+    ticker: "AAPL"
+    name: "AAPL Buy & Hold"
+
+  - type: "equal_weight"
+    name: "Equal Weight Portfolio"
+
+# Execution settings (optional - uses config defaults if not specified)
+initial_capital: 1000000
+transaction_cost_bps: 5
+slippage_bps: 1
+
+# Metrics to compute
+metrics:
+  - total_return
+  - cagr
+  - sharpe
+  - volatility
+  - max_drawdown
+  - hit_rate
+
+# Output directory (optional - defaults to experiments/<experiment_id>)
+# output_dir: "experiments/model_comparison_2024"
